@@ -551,11 +551,10 @@ def addLCAData(scenario):
     lcia_methods = []
     lcia_units = []
     for m in bw2.methods:
-        breakpoint()
         if m[0] == config_laend.bw2_method:
             lcia_methods.append(m)
             lcia_units.append(bw2.methods.data[m]['unit'])
-    breakpoint()
+
     # prepare search for all relevant environmental data within scenario dict for LCA computation    
     keys1 = ['buses', 'commodity_sources', 'renewables', 'storages', 'converters_in', 'converters_out']
     keys2 = ['shortage_env', 'excess_env', 'var_env1', 'var_env2', 'inv1']

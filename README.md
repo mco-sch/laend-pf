@@ -13,7 +13,7 @@ cd laend-pf
 ```
 
 **2. Create and activate a virtual environment** (recommended: Python 3.10)\
-Other Python versions might work but were not tested. To set up and use virtual environments, please refer to the documentation of your python distribution (e.g. Anaconda, Micromamba). For instance, for Anaconda it would look like:
+Other Python versions might work but were not tested. To set up and use virtual environments, please refer to the documentation of your python distribution (e.g. Anaconda, Micromamba). For instance, for Anaconda it would look like
 ```
 conda create -n <myenv> python=3.10
 conda activate <myenv>
