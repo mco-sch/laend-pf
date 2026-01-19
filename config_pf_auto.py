@@ -201,7 +201,7 @@ hp_factor_icing = 0.8
 #define brightway2 project to be used as reference
 bw2_project = 'laend'
 #define database to be used within bw2_project
-bw2_database = 'h2chemie2050'
+bw2_database = 'own_calculations'
 #define Impact Assessment Method and optionally impact category to be used
 bw2_method = 'EF v3.1'
 
