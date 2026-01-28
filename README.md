@@ -41,8 +41,8 @@ For automatic LCA import, see below.
 For documentation, see the LAEND documentation on [GitHub](https://github.com/inecmod/LAEND) or on the website of the [Institute for Industrial Ecology](https://www.hs-pforzheim.de/forschung/institute/inec/sonstiges/laend).
 
 ## LCA files
-Before using, have a look at the existing LCIA files in `/in/LCA` and check if they are still up to date and valid for your use case.
-If necessary, new LCIA files can be added to the directory, or individual brightway2 LCA models can be imported automatically (for configuration of automated import, make sure that `bw2_databse` in `config_pf_auto.py` corersponds to the name of your brightway2 database that contains your models).
+Before using, add LCIA files to `/in/LCA` manually, or individual brightway2 LCA models can be imported automatically (for configuration of automated import, make sure that `bw2_databse` in `config_pf_auto.py` corersponds to the name of your brightway2 database that contains your models).
+Due to ecoinvent Licensing, we are not allowed to upload LCIA data we make use of. 
 
 ## Potential Future Improvements
 - modularization an rearrangement of .py-modules for improved maintainability
