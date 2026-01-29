@@ -28,6 +28,11 @@ number_of_time_steps = None #8*24 #None
 aux_years = True  # True to use representative years and select the steps. False to optimize each year individually
 aux_year_steps = 5  # years
 
+# choose, if multi-period perfect foresight optimization (True) or myopic (False) 
+# be aware: 'myopic' is currently not really 'myopic', but only available for one single year
+# if it shall become a real myopic optimization, the myopic optimization loop must be programmed in 'laend_module_pf_auto.py'
+# and accessing the results after each optimization step must be programmed in utils_pf_auto.py:
+multiperiod_pf = False
 
 #######################################
 #### Set Optimization Objective
@@ -311,9 +316,11 @@ solver = 'gurobi'  # 'cplex', 'glpk', 'gurobi',....
 solver_verbose = True  # show/hide solver output
 solver_options_on = True
 solver_options = {
-    'threads': 4,
-    'primalTolerance': 1e-6,
-    'dualTolerance': 1e-6
+    # When using gurobi, parameters are "threads", "feasibilityTol", "optimalityTol";
+    # When using cbc, parameters should be "threads", "primalTolerance", "dualTolerance"
+    'threads': 14,
+    'feasibilitytol': 1e-6, #gurobi-standard: 1e-6
+    'optimalitytol': 1e-6 #gurobi-standard: 1e-6
 } if solver_options_on == True else {}
 
 continue_despite_storage_issues = None

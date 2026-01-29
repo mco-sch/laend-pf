@@ -788,6 +788,9 @@ def adaptForObjective(scenario, objective, weightEnv, normalizationEnv, goals, c
                             
                                 row[f'c_avar_{y}'] = new * goals['costs'] * c_factor
                                 
+                        #info: if there are completely variable EXCESS costs (not only periodically, but also within a period), they are
+                        #      processed during timeseries processing (see few lines below)
+                                
                         #common proceeding for everything that is not periodically variable EXCESS costs     
                         else:
                             if objective == 'Costs':
@@ -886,6 +889,17 @@ def createOemofNodes(scenario_obj, calc_years):
                         var_exc_costs.extend([(x[f'c_avar_{y}'] + x['excess_env'])* config_laend.aux_year_steps] * tstp)
                     if y == cy_list_adapted[-1]:
                         var_exc_costs.extend([x[f'c_avar_{y}'] + x['excess_env']] * tstp)                        
+            
+            #check, if variable costs (not only periodically, but also within a period)
+            elif x['excess_costs'] == 'c_var':           
+                var_exc_costs = []
+                for y in cy_list_adapted:
+                    #due to oemof v0.5.2 bug, workaround (multiplying variable_costs by period duration except last period) necessary
+                    if y !=  cy_list_adapted[-1]:
+                        var_exc_costs.extend(((scenario_obj['timeseries'][f'{x["label"]}_{y}.timevariable_costs'] + x['excess_env']) * config_laend.aux_year_steps).tolist())
+                    if y == cy_list_adapted[-1]:
+                        var_exc_costs.extend((scenario_obj['timeseries'][f'{x["label"]}_{y}.timevariable_costs'] + x['excess_env']).tolist())
+            
             #if one and the same excess costs are valid for all periods
             else:
                 var_exc_costs = []
@@ -976,7 +990,8 @@ def createOemofNodes(scenario_obj, calc_years):
                                 timeseries_list.extend((scenario_obj['timeseries'][col] + cy['var_env1']) * config_laend.aux_year_steps)
                             elif str(calc_year) == cy_list_adapted[-1]:
                                 timeseries_list.extend(scenario_obj['timeseries'][col] + cy['var_env1'])
-                                    
+                                break
+                                
                 else:
                     #due to oemof v0.5.2 bug, workaround (multiplying variable_costs by period duration except last period) necessary
                     if not str(calc_year) == cy_list_adapted[-1]:
@@ -1010,13 +1025,88 @@ def createOemofNodes(scenario_obj, calc_years):
                 if not any(col == x['label'] + '_' + y + '.fix' for col in scenario_obj['timeseries'].columns.values):
                     raise ValueError("Please make sure 'timeseries' is containing demand information for all periods necessary")
                 timeseries_list.extend(scenario_obj['timeseries'][x['label'] + '_' + y + '.fix'])
+
+        if x['DSM'] == False:
+            sink = solph.components.Sink(
+                label=x['label'],
+                inputs={busd[x['from']]: solph.flows.Flow(
+                    fix=timeseries_list,
+                    nominal_value=x['nominal value'])})
+            nodes.append(sink)
             
-        sink = solph.components.Sink(
-            label=x['label'],
-            inputs={busd[x['from']]: solph.flows.Flow(
-                fix=timeseries_list,
-                nominal_value=x['nominal value'])})
-        nodes.append(sink)
+        elif x['DSM'] != False:
+            #check, if absolute or relative upshifting capacity is given,
+            #if relative value is given, derive upshifting capacity from given load profile
+            if '%' in str(x['capacity_up']):
+                cap_up = list(scenario_obj['timeseries'][f'{x["label"]}.fix'] * int(x['capacity_up'][:-1])/100)
+                
+            else:
+                cap_up = [x['capacity_up']] * 8760
+            
+            #check, if absolute or relative downshifting capacity is given,
+            #if relative value is given, derive downshifting capacity from given load profile
+            if '%' in str(x['capacity_down']):
+                cap_down = list(scenario_obj['timeseries'][f'{x["label"]}.fix'] * int(x['capacity_down'][:-1])/100)
+            else:
+                cap_down = [x['capacity_down']] * 8760
+            
+            #if there is a regularly occuring time without DSM potential within a day (such as baseload 
+            #during night), search for them in DSM timeseries (cap_down, cap_up), and set DSM potential to 0
+            if x['unflex_from'] != False and x['unflex_to'] != False:
+                for day_counter in range(1, 366, 1):
+                    #consider time change from winter to summer time, as through that demand curve is shifted by minus 1 hour
+                    if ((x['day_timechange_march'] + 31 + 28) <= day_counter < (x['day_timechange_october'] + 31*5 + 30*3 + 28)
+                    and x['day_timechange_march'] != 0 and x['day_timechange_october'] != 0):
+                        time_correction = 1
+                    else:
+                        time_correction = 0
+                        
+                    #combine range from start value to midnight with range from midnight
+                    #to end value
+                    if x['unflex_from'] > x['unflex_to']:
+                        unflex_range = list(range(int(x['unflex_from']), 24 + 1, 1)) + \
+                            list(range(1, int(x['unflex_to']) + 1, 1))
+                    #or combine range from start value to end value, if both are on the same day
+                    else:
+                        unflex_range = list(range(int(x['unflex_from']), int(x['unflex_to']) + 1, 1))
+                    #define timedependent inflexibility
+                    for unflex in unflex_range:
+                        day_time = (day_counter - 1) * 24 + (unflex - 1 - time_correction)
+                        cap_up[day_time] = 0
+                        cap_down[day_time] = 0
+
+            #if there is no DSM potential on weekends (saturday +  sunday), search in DSM timeseries
+            #(cap_down, cap_up) for saturdays and sundays, and set DSM potential to 0
+            if x['first_sunday'] != False:
+                for day_counter in range(int(x['first_sunday']), 367, 7):
+                    #Sundays
+                    if day_counter < 365:
+                        for day_time in range((day_counter - 1) * 24, day_counter * 24, 1):
+                            cap_up[day_time] = 0
+                            cap_down[day_time] = 0
+                    #Saturdays:
+                    if day_counter - 1 > 0:
+                        for day_time in range((day_counter - 2) * 24, (day_counter - 1) * 24, 1):
+                            cap_up[day_time] = 0
+                            cap_down[day_time] = 0                            
+            
+            #write oemof node
+            sink_dsm = solph.components.experimental.SinkDSM(
+                label=x['label'],
+                inputs={busd[x['from']]: solph.flows.Flow()},
+                demand=timeseries_list,
+                max_demand=1,
+                shed_eligibility=False,
+                capacity_up=cap_up,
+                capacity_down=cap_down,
+                max_capacity_down=1,
+                max_capacity_up=1,
+                approach=x['DSM'],
+                shift_interval=int(x['delay_time']) if x['DSM']=='oemof' else None,
+                delay_time=int(x['delay_time']) if x['DSM'] in ('DIW', 'DLR') else None,
+                shift_time=int(x['shift_time'])/2 if x['DSM']=='DLR' else None,
+                )
+            nodes.append(sink_dsm)
         
         logging.debug(f'{x["label"]} (sink) created.')
 
@@ -1774,62 +1864,112 @@ def processResults(results_main, results_meta, calc_years, scenario):
     flow_overview = pd.DataFrame()
     ####processing nodes (storages)
     nodes_list = []
-    for node in nodes:
-        nodes_list.append(str(node[0]))
-        if not results_main[node]['period_scalars'].isna().all().all():
-            if not (results_main[node]['period_scalars']['total'] == 0).all():
-                #generate an overview of the storage level for all periods
-                total_flow_series = results_main[node]['sequences']['storage_content']
-                flow_overview[f'{str(node[0])}_content-level'] = total_flow_series
+    
+    if config_laend.multiperiod_pf == True:
+        for node in nodes:
+            nodes_list.append(str(node[0]))
+            if results_main[node]['period_scalars'].notna().any().any():
+                if not (results_main[node]['period_scalars']['total'] == 0).all():
+                    #generate an overview of the storage level for all periods
+                    total_flow_series = results_main[node]['sequences']['storage_content']
+                    flow_overview[f'{str(node[0])}_content-level'] = total_flow_series
+                    
+                    invest_name = str(node[0])
+                    #iterate through period_scalars (investment results per period)
+                    for y, r in results_main[node]['period_scalars'].iterrows():
+                                                      
+                        #multiply results with specific costs and LCA data
+                        scen_stor = scenario['storages']
+                        for i, t in scen_stor.iterrows():
+                            if invest_name == t['label'] or f'{invest_name}_{str(y)[-2:]}' == t['label']:
+                                investment_series = processing_investments(y, r, t, results_meta)
+                                break
+                        
+                        #write results to invest DataFrame, that is afterwards exported as .xlsx file
+                        investments[f'{invest_name}_{y}'] = investment_series
+        
+        for flow in flows:
+            ####processing mulit-period investment 'flows'
+            #make sure, that only technologies with investments are considered and no (storage-) flow investments overwrite already written node (capacity-) investments
+            if results_main[flow]['period_scalars'].notna().any().any() and not any(str(flow[0]) == x for x in nodes_list) and not any(str(flow[1]) == x for x in nodes_list):
+                if not (results_main[flow]['period_scalars']['total'] == 0).all():
+                    if str(flow[0])[:3] != 'bus':
+                        invest_name = str(flow[0])
+                    elif str(flow[0])[:3] == 'bus':
+                        invest_name = str(flow[1])       
+    
+                    #iterate through period_scalars (investment results per period)
+                    for y, r in results_main[flow]['period_scalars'].iterrows():
+                        
+                        # here starts a funciton: investment_series = def collect_flowResults(y, r)
+                        
+                        #multiply results with specific costs and LCA data
+                        finished = False
+                        scen_data_list = ['renewables', 'converters_in', 'converters_out']
+                        for scen_data in scen_data_list:
+                            for i, t in scenario[scen_data].iterrows():
+                                if invest_name == t['label'] or f'{invest_name}_{str(y)[-2:]}' == t['label']:
+                                    investment_series = processing_investments(y, r, t, results_meta)
+                                    finished = True
+                                if finished == True:
+                                    break
+                            if finished == True:
+                                break
+                        
+                        #write results to invest DataFrame, that is afterwards exported as .xlsx file
+                        investments[f'{invest_name}_{y}'] = investment_series
                 
-                invest_name = str(node[0])
-                #iterate through period_scalars (investment results per period)
-                for y, r in results_main[node]['period_scalars'].iterrows():                                 
+            # access function of "processing_variable_flows",
+            #collecting all relevant data regarding variable flows that shall be returned via the results excel
+            variable, flow_overview = processing_variable_flows(variable, flow, results_main, results_meta, flow_overview, calc_years, scenario)
+    
+    
+    #if myopic optimization is activated:
+    else:
+        for node in nodes:
+            nodes_list.append(str(node[0]))
+            if results_main[node]['scalars'].notna().any():
+                if not results_main[node]['scalars'].loc['total'] == 0:
+                    #generate an overview of the storage level for all periods
+                    total_flow_series = results_main[node]['sequences']['storage_content']
+                    flow_overview[f'{str(node[0])}_content-level'] = total_flow_series
+                    
+                    invest_name = str(node[0])
+                    # access investment results
+                    r = results_main[node]['scalars']
+                    y = r.name.year
+                                                      
                     #multiply results with specific costs and LCA data
                     scen_stor = scenario['storages']
                     for i, t in scen_stor.iterrows():
                         if invest_name == t['label'] or f'{invest_name}_{str(y)[-2:]}' == t['label']:
-                            investment_series = pd.Series(data={'unit': t['unit'], 'year': y, 'type': 'investment', 'invest_capacity': r['invest'], 'total_capacity': r['total'], 'objective': results_meta['objective']}, name=y)
-                            investment_series['invest_cost'] = r['invest'] * t['invest']
-                            investment_series['invest_cost+wacc'] = economics.annuity(r['invest'] * t['invest'], t['lifetime'], config_laend.InvestWacc) * t['lifetime']
-                            investment_series['lifetime'] = t['lifetime']
-                            investment_series['om_p.a.'] = r['total'] * t['om']
-                            investment_series['annualized_invest'] = 0
-                            investment_series['ann_total_cost_p.a.'] = 0
-                            LCA_ser = pd.Series(data=r['invest'] * t['inv1'], name=y)
-                            investment_series = pd.concat([investment_series, LCA_ser])
+                            investment_series = processing_investments(y, r, t, results_meta)
                             break
                     
                     #write results to invest DataFrame, that is afterwards exported as .xlsx file
                     investments[f'{invest_name}_{y}'] = investment_series
+                    
+        for flow in flows:
+            ####processing myopic investment 'flows'
+            #make sure, that only technologies with investments are considered and no (storage-) flow investments overwrite already written node (capacity-) investments
+            if results_main[flow]['scalars'].notna().any() and not any(str(flow[0]) == x for x in nodes_list) and not any(str(flow[1]) == x for x in nodes_list):
+                if not results_main[flow]['scalars'].loc['total'] == 0:
+                    if str(flow[0])[:3] != 'bus':
+                        invest_name = str(flow[0])
+                    elif str(flow[0])[:3] == 'bus':
+                        invest_name = str(flow[1])       
     
-    for flow in flows:
-        ####processing investment 'flows'
-        #make sure, that only technologies with investments are considered and no (storage-) flow investments overwrite already written node (capacity-) investments
-        if not results_main[flow]['period_scalars'].isna().all().all() and not any(str(flow[0]) == x for x in nodes_list) and not any(str(flow[1]) == x for x in nodes_list):
-            if not (results_main[flow]['period_scalars']['total'] == 0).all():
-                if str(flow[0])[:3] != 'bus':
-                    invest_name = str(flow[0])
-                elif str(flow[0])[:3] == 'bus':
-                    invest_name = str(flow[1])       
-
-                #iterate through period_scalars (investment results per period)
-                for y, r in results_main[flow]['period_scalars'].iterrows():
+                    # access investment results
+                    r = results_main[flow]['scalars']
+                    y = r.name.year
+                        
                     #multiply results with specific costs and LCA data
                     finished = False
                     scen_data_list = ['renewables', 'converters_in', 'converters_out']
                     for scen_data in scen_data_list:
                         for i, t in scenario[scen_data].iterrows():
                             if invest_name == t['label'] or f'{invest_name}_{str(y)[-2:]}' == t['label']:
-                                investment_series = pd.Series(data={'unit': t['unit'], 'year': y, 'type': 'investment', 'invest_capacity': r['invest'], 'total_capacity': r['total'], 'objective': results_meta['objective']}, name=y)
-                                investment_series['invest_cost'] = r['invest'] * t['invest']
-                                investment_series['invest_cost+wacc'] = economics.annuity(r['invest'] * t['invest'], t['lifetime'], config_laend.InvestWacc) * t['lifetime']
-                                investment_series['lifetime'] = t['lifetime']
-                                investment_series['om_p.a.'] = r['total'] * t['om']
-                                investment_series['annualized_invest'] = 0
-                                investment_series['ann_total_cost_p.a.'] = 0
-                                LCA_ser = pd.Series(data=r['invest'] * t['inv1'], name=y)
-                                investment_series = pd.concat([investment_series, LCA_ser])
+                                investment_series = processing_investments(y, r, t, results_meta)
                                 finished = True
                             if finished == True:
                                 break
@@ -1837,12 +1977,88 @@ def processResults(results_main, results_meta, calc_years, scenario):
                             break
                     
                     #write results to invest DataFrame, that is afterwards exported as .xlsx file
-                    investments[f'{invest_name}_{y}'] = investment_series
-                    
-        ####processing variable flows        
-        if not (results_main[flow]['sequences']['flow'] == 0).all():
-            df = results_main[flow]['sequences']
+                    investments[f'{invest_name}_{y}'] = investment_series        
 
+            # access function of "processing_variable_flows",
+            #collecting all relevant data regarding variable flows that shall be returned via the results excel
+            variable, flow_overview = processing_variable_flows(variable, flow, results_main, results_meta, flow_overview, calc_years, scenario)
+
+                    
+    ####final preparation and ordering for excel export
+    investments = investments.T
+    variable = variable.T
+    
+    #combine invetment df and variable df to one total overview df, ordered by periods (ascending) and type (invest to variable)
+    combined = pd.concat([investments, variable])
+    combined = combined.fillna(0)
+    combined.sort_values(by=['year', 'type'], inplace=True)
+    try:
+        #reorder columns so that capacity/flow information and respective cost information is at the left hand side and LCA data afterwards
+        desired_column_order = ['unit', 'year', 'type', 'invest_capacity', 'total_capacity', 'invest_cost', 'invest_cost+wacc', 'lifetime',
+                                'annualized_invest', 'om_p.a.', 'flow_p.a.', 'variable_costs_p.a.', 'ann_total_cost_p.a.', 'objective']
+        LCA_columns = [col for col in combined.columns if col not in desired_column_order]
+        desired_column_order += sorted(LCA_columns)
+        combined = combined[desired_column_order]
+    except:
+        proxy = 'nothing'
+
+    return combined, investments, variable, flow_overview, LCA_columns
+
+
+
+def processing_investments(y, r, t, results_meta):
+    '''
+        Parameters
+    ----------
+    y : integer - year of interest
+    r : series - representing a row containing results of a specific technology
+    t : series - representing a row containing parameter information of a specific technology (coming from scenario excel)
+    results_meta : dict containing objective and information about the problem and solver
+
+    Returns
+    -------
+    investment_series : series containing information about specific investment, that is afterwards added to a dict
+
+    '''
+    
+    investment_series = pd.Series(data={'unit': t['unit'], 'year': y, 'type': 'investment', 'invest_capacity': r['invest'], 'total_capacity': r['total'], 'objective': results_meta['objective']}, name=y)
+    investment_series['invest_cost'] = r['invest'] * t['invest']
+    investment_series['invest_cost+wacc'] = economics.annuity(r['invest'] * t['invest'], t['lifetime'], config_laend.InvestWacc) * t['lifetime']
+    investment_series['lifetime'] = t['lifetime']
+    investment_series['om_p.a.'] = r['total'] * t['om']
+    investment_series['annualized_invest'] = 0
+    investment_series['ann_total_cost_p.a.'] = 0
+    LCA_ser = pd.Series(data=r['invest'] * t['inv1'], name=y)
+    investment_series = pd.concat([investment_series, LCA_ser])
+    
+    return investment_series
+
+
+
+def processing_variable_flows(variable, flow, results_main, results_meta, flow_overview, calc_years, scenario):
+    '''
+    Parameters
+    ----------
+    variable: empty pd.DataFrame - will be filled within this function with the wanted data/information
+    flow: dictionary containing the flows of oemof main_results
+    results_main: dict containing the results for all nodes and flows
+    results_meta: dict containing objective and information about the problem and solver
+    flow_overview: DataFrame containing overview of flows
+    calc_years: list of representative years (=periods) that are optimized
+    scenario: scenario dictionary containing all relevant techno-ecological and -economic information.
+
+    Returns
+    -------
+    variable: filled pd.DataFrame, containing information about all variable flows
+    
+    '''
+
+    #check, if there are results containing dsm information - and if so, neglect them
+    if not any("dsm" in col.lower() for col in results_main[flow]['sequences'].columns):
+        #check, if there are results without flows (i.e. all flows=0) - and if so, neglect them
+        if (results_main[flow]['sequences']['flow'] >= 0).any():
+            df = results_main[flow]['sequences']
+        
             #generate an flow overview for all periods
             total_flow_series = df['flow']
             flow_overview[f'{flow[0]}/{flow[1]}'] = total_flow_series
@@ -1850,7 +2066,7 @@ def processResults(results_main, results_meta, calc_years, scenario):
             #generate an overview of all flows per year and their respective impacts (financial and ecological)
             for cy in calc_years:
                 y_flow_series = pd.Series(data=df[df.index.year == cy]['flow'], name=cy)
-                y_flow_series.index = pd.RangeIndex(1, 8761)
+                y_flow_series.index = pd.RangeIndex(1, len(y_flow_series) + 1)
                 ####----commodity flows
                 if str(flow[0])[:8] == 'resource':
                     scen_comm = scenario['commodity_sources']
@@ -1864,7 +2080,7 @@ def processResults(results_main, results_meta, calc_years, scenario):
                                 y_cost = sum(y_flow_series) * t['variable_costs']
                                 finished = True
                                 break
-
+    
                         elif f'{t_name}_{str(cy)[-2:]}' == t['label']:
                             if t['timevariable_costs']:
                                 y_cost = sum(y_flow_series * scenario['timeseries'][f'{t["label"]}.timevariable_costs'])
@@ -1873,11 +2089,11 @@ def processResults(results_main, results_meta, calc_years, scenario):
                                 y_cost = sum(y_flow_series) * t['variable_costs']
                                 finished = True
                                 break
-                            
+                        
                     variable_series = pd.Series(data={'unit': t['unit'], 'year': cy, 'type': 'variable', 'flow_p.a.': sum(y_flow_series), 'variable_costs_p.a.': y_cost, 'objective': results_meta['objective']}, name=f'{flow[0]}/{flow[1]}_{cy}')
                     LCA_ser = pd.Series(data=sum(y_flow_series) * t['var_env1'], name=f'{flow[0]}/{flow[1]}_{cy}')
                     variable_series = pd.concat([variable_series, LCA_ser])
-                    
+                
                 elif str(flow[0])[:3] == 'bus':
                     ####----excess or shortage flows
                     if str(flow[1]).split('_')[-1:][0] == 'excess' or str(flow[1]).split('_')[-1:][0] == 'shortage':
@@ -1885,25 +2101,30 @@ def processResults(results_main, results_meta, calc_years, scenario):
                             pre_syllable = 'excess'
                         elif str(flow[1]).split('_')[-1:][0] == 'shortage':
                             pre_syllable = 'shortage'
-                        
-                        finished = False
+                    
                         scen_bus = scenario['buses']
                         for i, t in scen_bus.iterrows():
                             t_name = str(flow[0])
                             if t_name == t['label']:
+                                #check, if bus parameters are based on flexible timeseries (i.e. iterables)
+                                #if yes
                                 if isinstance(t[f'{pre_syllable}_costs'], str):
-                                    flex_proxy = t[f'{pre_syllable}_costs']
-                                    y_cost = sum(y_flow_series) * t[f'{flex_proxy}_{str(cy)[-2:]}']
-                                    LCA_ser = pd.Series(data=sum(y_flow_series) * t[f'{pre_syllable}_env'], name=f'{flow[0]}/{flow[1]}_{cy}')
+                                    if t[f'{pre_syllable}_costs'] == "c_avar":
+                                        y_cost = sum(y_flow_series) * t[f'c_avar_{str(cy)[-2:]}']
+                                        LCA_ser = pd.Series(data=sum(y_flow_series) * t[f'{pre_syllable}_env'], name=f'{flow[0]}/{flow[1]}_{cy}')
+                                    elif t[f'{pre_syllable}_costs'] == "c_var":
+                                        y_cost = sum(y_flow_series * scenario['timeseries'][f'{t["label"]}_{str(cy)[-2:]}.timevariable_costs'])
+                                        LCA_ser = pd.Series(data=sum(y_flow_series) * t[f'{pre_syllable}_env'], name=f'{flow[0]}/{flow[1]}_{cy}')
                                     break
+                                #if not
                                 else:
                                     y_cost = sum(y_flow_series) * t[f'{pre_syllable}_costs']
                                     LCA_ser = pd.Series(data=sum(y_flow_series) * t[f'{pre_syllable}_env'], name=f'{flow[0]}/{flow[1]}_{cy}')
                                     break
-                        
+                    
                         variable_series = pd.Series(data={'unit': t['unit'], 'year': cy, 'type': 'variable', 'flow_p.a.': sum(y_flow_series), 'variable_costs_p.a.': y_cost, 'objective': results_meta['objective']}, name=f'{flow[0]}/{flow[1]}_{cy}')
                         variable_series = pd.concat([variable_series, LCA_ser])
-                    
+    
                     ####----variable demand flows
                     elif str(flow[1])[:4] == 'load':
                         y_cost = 0
@@ -1911,7 +2132,7 @@ def processResults(results_main, results_meta, calc_years, scenario):
                         variable_series = pd.Series(data={'unit': unit, 'year': cy, 'type': 'variable', 'flow_p.a.': sum(y_flow_series), 'variable_costs_p.a.': y_cost, 'objective': results_meta['objective']}, name=f'{flow[0]}/{flow[1]}_{cy}')
                         LCA_ser = pd.Series(data=0, index=config_laend.system_impacts_index[1:-3], name=f'{flow[0]}/{flow[1]}_{cy}')
                         variable_series = pd.concat([variable_series, LCA_ser])
-                        
+                    
                     ####----variable input flows for storages or converters    
                     else: 
                         finished = False
@@ -1936,12 +2157,12 @@ def processResults(results_main, results_meta, calc_years, scenario):
                                     break
                             if finished == True:
                                 break
-                        
+    
                         unit = next((x['unit'] for _, x in scenario['buses'].iterrows() if x['label'] == str(flow[0])), None)
                         variable_series = pd.Series(data={'unit': unit, 'year': cy, 'type': 'variable', 'flow_p.a.': sum(y_flow_series), 'variable_costs_p.a.': y_cost, 'objective': results_meta['objective']}, name=f'{flow[0]}/{flow[1]}_{cy}')
                         LCA_ser = pd.Series(data=0, index=config_laend.system_impacts_index[1:-3], name=f'{flow[0]}/{flow[1]}_{cy}')
                         variable_series = pd.concat([variable_series, LCA_ser])
-                
+            
                 ####----variable output flows for renewables, storages, converters        
                 else:
                     finished = False
@@ -1962,11 +2183,6 @@ def processResults(results_main, results_meta, calc_years, scenario):
                                     if str(flow[1]) == t['to1']:
                                         if t['var_to1_costs'] == "timevariable_costs":
                                             y_cost = sum(y_flow_series * scenario['timeseries'][f'{t["label"]}.timevariable_costs'])
-                                        elif t['var_to1_costs'] == "timevariable_penalty":
-                                            if cy == calc_years[0]:
-                                                y_cost = sum(y_flow_series * scenario['timeseries'][f'{t["label"]}.timevariable_penalty'])
-                                            else:
-                                                y_cost = sum(y_flow_series * scenario['timeseries'][f'{t["label"]}.timevariable_penalty'][8760])
                                         else:
                                             y_cost = sum(y_flow_series) * t['var_to1_costs']
                                         LCA_ser = pd.Series(data=sum(y_flow_series) * t['var_env1'], name=f'{flow[0]}/{flow[1]}_{cy}')
@@ -1981,33 +2197,15 @@ def processResults(results_main, results_meta, calc_years, scenario):
                                 break
                         if finished == True:
                             break
-                                        
+                                    
                     unit = next((x['unit'] for _, x in scenario['buses'].iterrows() if x['label'] == str(flow[1])), None)
                     variable_series = pd.Series(data={'unit': unit, 'year': cy, 'type': 'variable', 'flow_p.a.': sum(y_flow_series), 'variable_costs_p.a.': y_cost, 'objective': results_meta['objective']}, name=f'{flow[0]}/{flow[1]}_{cy}')
                     variable_series = pd.concat([variable_series, LCA_ser])
-                
+            
                 variable[f'{flow[0]}/{flow[1]}_{cy}'] = variable_series
-                        
-    ####final preparation and ordering for excel export
-    investments = investments.T
-    variable = variable.T
     
-    #combine invetment df and variable df to one total overview df, ordered by periods (ascending) and type (invest to variable)
-    combined = pd.concat([investments, variable])
-    combined = combined.fillna(0)
-    combined.sort_values(by=['year', 'type'], inplace=True)
-    try:
-        #reorder columns so that capacity/flow information and respective cost information is at the left hand side and LCA data afterwards
-        desired_column_order = ['unit', 'year', 'type', 'invest_capacity', 'total_capacity', 'invest_cost', 'invest_cost+wacc', 'lifetime',
-                                'annualized_invest', 'om_p.a.', 'flow_p.a.', 'variable_costs_p.a.', 'ann_total_cost_p.a.', 'objective']
-        LCA_columns = [col for col in combined.columns if col not in desired_column_order]
-        desired_column_order += sorted(LCA_columns)
-        combined = combined[desired_column_order]
-    except:
-        proxy = 'nothing'
+    return variable, flow_overview
 
-    return combined, investments, variable, flow_overview, LCA_columns
-    
 
 
 def summarizeIndividualResults(xls, LCA_columns, calc_years):
@@ -2145,6 +2343,7 @@ def annualization(xls):
             xls.loc[i] = t
             
     return xls
+
     
 ####End
 

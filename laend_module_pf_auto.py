@@ -208,12 +208,18 @@ def optimizeForObjective(i, scenario, timeindex, periods, calc_years, run_name, 
     logging.info('Initializing energy system')
     
     #create the energy system
-    es = solph.EnergySystem(
-        timeindex=timeindex,
-        timeincrement=[1] * len(timeindex),
-        periods=periods,
-        infer_last_interval=False,
-        )
+    if config_pf.multiperiod_pf == True:
+        es = solph.EnergySystem(
+            timeindex=timeindex,
+            timeincrement=[1] * len(timeindex),
+            periods=periods,
+            infer_last_interval=False,
+            )
+    else:
+        es = solph.EnergySystem(
+            timeindex=timeindex,
+            infer_last_interval=True,
+            )
     
     #create oemof objects
     new_nodes = utils.createOemofNodes(scenario_obj, calc_years)
@@ -240,7 +246,11 @@ def optimizeForObjective(i, scenario, timeindex, periods, calc_years, run_name, 
     # solving the linear problem using the given solver
     logging.info(f'Solving the optimization problem for {i}')
     ####################################################
-    om.solve(solver=config_pf.solver, solve_kwargs={"tee": config_pf.solver_verbose})    
+    om.solve(solver=config_pf.solver, solve_kwargs={"tee": config_pf.solver_verbose,
+                                                    "options": {
+                                                    **config_pf.solver_options
+                                                    }}
+             )
     
     logging.info(f'Successfully solved the optimization problem for {i}')
 
