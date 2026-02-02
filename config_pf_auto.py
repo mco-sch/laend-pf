@@ -15,7 +15,7 @@ showTable = False
 
 # Start and end year of optimization
 start_year = 2025
-end_year = 2030
+end_year = 2025
 
 calc_start = datetime(start_year, 1, 1, 00, 00)
 calc_end = datetime(end_year, 12, 31, 23, 00)
@@ -32,7 +32,7 @@ aux_year_steps = 5  # years
 # be aware: 'myopic' is currently not really 'myopic', but only available for one single year
 # if it shall become a real myopic optimization, the myopic optimization loop must be programmed in 'laend_module_pf_auto.py'
 # and accessing the results after each optimization step must be programmed in utils_pf_auto.py:
-multiperiod_pf = False
+multiperiod_pf = True
 
 #######################################
 #### Set Optimization Objective
@@ -289,8 +289,8 @@ def_cn_fuel_based_only = False
 
 # InvestCostDecrease = 0.01  # Annual cost decrease (technical progress)
 
-InvestWacc = 0.079  #weighted average cost of capital, part of annuity calculation based on oemof.economics.annuity
-DiscountRate = 1e-12  #pay attention: if discount rate is changed to >0, environmental impacts will also be discounted
+InvestWacc = 1e-11  #weighted average cost of capital, part of annuity calculation based on oemof.economics.annuity
+DiscountRate = 1e-11  #pay attention: if discount rate is changed to >0, environmental impacts will also be discounted
 # kW (kWh for storage) investments below this value do not get passed as existing capacity to next year
 Invest_min_threshold = 0.1 #only applicable to myopic
 InvestTimeSteps = 1 if aux_years == False else aux_year_steps

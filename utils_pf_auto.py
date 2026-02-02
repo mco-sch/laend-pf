@@ -158,7 +158,7 @@ def CompileScenario(filename):
     del scenario['timeseries']['hour']
     
     logging.info("Data from Scenario Excel imported.")
-    
+
     #iterate through sheets and drop all deactivated
     #commodities, technologies, empty rows, columns etc.:
     keys_list = [key for key in scenario.keys() if key != "timeseries"]
@@ -186,7 +186,7 @@ def CompileScenario(filename):
     scenario[key].drop(columns=empty_columns, inplace=True)
     
     logging.info("All irrelevant data dropped.")
-    
+
     return scenario
 
 
@@ -697,7 +697,7 @@ def determineCfactorForSolver(objective):
 
 def adaptForObjective(scenario, objective, weightEnv, normalizationEnv, goals, c_factor, calc_years):
     '''
-    Adapts all (env & financial) factors in scenario to the optimization objective
+    Adapts env & financial factors in scenario to the optimization objective
 
     Parameters
     ----------
@@ -731,7 +731,7 @@ def adaptForObjective(scenario, objective, weightEnv, normalizationEnv, goals, c
     keys1 = ['buses', 'commodity_sources', 'renewables', 'storages', 'converters_in', 'converters_out']
     keys_env = ['shortage_env', 'excess_env', 'var_env1', 'var_env2', 'inv1']
     keys_fin = ['shortage_costs', 'excess_costs', 'variable_costs', 'om', 'invest', 'variable_input_costs', 'variable_output_costs', 'var_from1_costs', 'var_to1_costs', 'var_from2_costs']
-    pot_multi_criteria = ['EnvCosts', 'JRCII', 'Equilibrium']
+    multi_criteria = ['EnvCosts', 'JRCII', 'Equilibrium']
 
     #search relevant information within scenario excel and compute adaption:
     for key1 in keys1:
@@ -742,7 +742,7 @@ def adaptForObjective(scenario, objective, weightEnv, normalizationEnv, goals, c
         else:
             # iterate through rows of scenario
             for x in scenario_obj[key1].index:
-                row = scenario_obj[key1].loc[x]
+                row = scenario_obj[key1].loc[x].copy()
                 logging.info('Adapting environmental impacts of ' + row['label'] + ' for weight and normalisation')
  
                 for key_env in keys_env:
@@ -750,7 +750,7 @@ def adaptForObjective(scenario, objective, weightEnv, normalizationEnv, goals, c
                         if isinstance(row[key_env], pd.Series):
                             if objective == 'Costs':
                                 new = 0
-                            elif objective in pot_multi_criteria:
+                            elif objective in multi_criteria:
                                 #multiply weighting factors with normalized LCA and sum up
                                 #think about division by lifetime
                                 new_list = []
@@ -767,7 +767,11 @@ def adaptForObjective(scenario, objective, weightEnv, normalizationEnv, goals, c
                                 
                             logging.info(row['label'] + ': Environmental impacts ' + key_env + ' adapted to optimization objective\nImpact w/o goal weighting and correction factor: ' + str(new))
                             
-                            row[key_env] = new * goals['env'] * c_factor
+                            row.loc[key_env] = new * goals['env'] * c_factor
+                            
+                            if (config_laend.multiperiod_pf == False
+                                and key_env =='inv1'):
+                                row.loc[key_env] /= row.loc['lifetime']
 
                     except KeyError:
                         continue
@@ -781,12 +785,12 @@ def adaptForObjective(scenario, objective, weightEnv, normalizationEnv, goals, c
                             for y in cy_list_adapted:
                                 if objective == 'Costs':
                                     new = row[f'c_avar_{y}']
-                                elif objective in pot_multi_criteria:
+                                elif objective in multi_criteria:
                                     new = row[f'c_avar_{y}'] / config_laend.normalization_cost_gdp
                                 else:
                                     new = 0
                             
-                                row[f'c_avar_{y}'] = new * goals['costs'] * c_factor
+                                row.loc[f'c_avar_{y}'] = new * goals['costs'] * c_factor
                                 
                         #info: if there are completely variable EXCESS costs (not only periodically, but also within a period), they are
                         #      processed during timeseries processing (see few lines below)
@@ -798,7 +802,7 @@ def adaptForObjective(scenario, objective, weightEnv, normalizationEnv, goals, c
                                     new = row[key_fin]
                                 elif key_fin == 'invest':
                                     new = economics.annuity(row[key_fin], row['lifetime'], config_laend.InvestWacc) * row['lifetime']
-                            elif objective in pot_multi_criteria:
+                            elif objective in multi_criteria:
                                 if not key_fin == 'invest':
                                     new = row[key_fin] / config_laend.normalization_cost_gdp
                                 elif key_fin == 'invest':
@@ -806,20 +810,38 @@ def adaptForObjective(scenario, objective, weightEnv, normalizationEnv, goals, c
                             else:
                                 new = 0
                         
-                            row[key_fin] = new * goals['costs'] * c_factor
-                        
+                            row.loc[key_fin] = new * goals['costs'] * c_factor
+
+                            # applying multiperiod approach (default), annuity
+                            # is calculated within the optimization model 
+                            # itself (with interest_rate=0 (see in
+                            # CreateOemofNodes) - actual interest rate is 
+                            # already considered in the previous rows: this 
+                            # ensures that no depreciation of potential 
+                            # environmental impacts within objective function 
+                            # takes place.)
+                            # However, for multiperiod appraoch, previously
+                            # computet annuities are multiplied by lifetime - 
+                            # while this multiplication must be avoided when
+                            # applying "myopic" approach.
+                            # Thus, this multiplication is reversed here.
+                            if (config_laend.multiperiod_pf == False
+                                and key_fin =='invest'):
+                                row.loc[key_fin] /= row.loc['lifetime'] 
+                                row.loc[key_fin] += row.loc['om']
                     except KeyError:
                         continue
                     
                 scenario_obj[key1].loc[x] = row
 
-    #search relevant infromation within timeseries (timevariable_costs or timevariable_env) and compute adaption
+    #search relevant inforomation within timeseries (timevariable_costs or 
+    #timevariable_env) and compute adaption
     for col in scenario_obj['timeseries'].columns.values:
         #adapt financial data
         if col.split('.')[1] == 'timevariable_costs':
             if objective == 'Costs':
                 new = pd.Series(scenario_obj['timeseries'][col])
-            elif objective in pot_multi_criteria:
+            elif objective in multi_criteria:
                 new = pd.Series(scenario_obj['timeseries'][col]) / config_laend.normalization_cost_gdp
             else:
                 new = pd.Series([0] * tstp)
@@ -830,7 +852,7 @@ def adaptForObjective(scenario, objective, weightEnv, normalizationEnv, goals, c
 #        elif col.split('.')[1] == 'timevariable_env':
 #            if objective == 'Costs':
 #                new = [0] * 8760
-#            elif objective in pot_multi_criteria:
+#            elif objective in multi_criteria:
 #                multiply series with weighting factor and normalization factor of respective impact category (probably carbon footprint)               
 
 
@@ -853,7 +875,7 @@ def createOemofNodes(scenario_obj, calc_years):
     -------
     nodes: list of created nodes that will be added to energysystem model (es)
     '''
-    
+
     logging.info('Creating oemof objects')
     
     if not scenario_obj:
@@ -869,7 +891,7 @@ def createOemofNodes(scenario_obj, calc_years):
     cy_list_adapted = []
     for calc_year in calc_years:
         cy_list_adapted.append(str(calc_year)[-2:])
-    
+
 
     ####Create buses    
     for i, x in scenario_obj['buses'].iterrows():
@@ -912,6 +934,7 @@ def createOemofNodes(scenario_obj, calc_years):
                 label=x['label'] + '_excess',
                 inputs={busd[x['label']]: solph.flows.Flow(
                     variable_costs=var_exc_costs)})
+
             nodes.append(bus_excess)
         
             
@@ -1281,10 +1304,11 @@ def createOemofNodes(scenario_obj, calc_years):
                         interest_rate=0
                         ))},
                 loss_rate=cy['capacity loss'],
-                initial_storage_level=None,
+                initial_storage_level=None if cy['initial level'] == 'opt' 
+                    else cy['initial level'],
                 balanced=bool(cy['balanced']),
-                max_storage_level=cy["capacity max"],
-                min_storage_level=cy["capacity min"],
+                max_storage_level=cy["level max"],
+                min_storage_level=cy["level min"],
                 invest_relation_input_capacity=cy['invest_relation_input_capacity'],
                 invest_relation_output_capacity=cy['invest_relation_output_capacity'],
                 inflow_conversion_factor=cy["efficiency inflow"],
@@ -1298,7 +1322,7 @@ def createOemofNodes(scenario_obj, calc_years):
                     interest_rate=0, #interest rate was already considered in adaptForObjective computation. Considering here would lead to problems if env impacts are included in ep_costs
                     fixed_costs=cy['om'] * tstp/8760))
             nodes.append(storage)
-            
+
             logging.debug(f'{stor} (storage) created.')
 
         #if storage information are NOT valid for all periods, BUT for each individual period    
@@ -1317,7 +1341,7 @@ def createOemofNodes(scenario_obj, calc_years):
                     stor_varincosts_list.extend([storages_dict[stor][y]['variable_input_costs']] * tstp)
                     stor_varoutcosts_list.extend([storages_dict[stor][y]['variable_output_costs']] * tstp)
             
-            cy = storages_dict[stor][calc_year]        
+            cy = storages_dict[stor][calc_year]      
             to = cy['bus']
             storage = solph.components.GenericStorage(
                 label=stor,
@@ -1336,10 +1360,11 @@ def createOemofNodes(scenario_obj, calc_years):
                         interest_rate=0
                         ))},
                 loss_rate=cy['capacity loss'],
-                initial_storage_level=None,
+                initial_storage_level=None if cy['initial level'] == 'opt' 
+                    else cy['initial level'],
                 balanced=bool(cy['balanced']),
-                max_storage_level=cy["capacity max"],
-                min_storage_level=cy["capacity min"],
+                max_storage_level=cy["level max"],
+                min_storage_level=cy["level min"],
                 invest_relation_input_capacity=cy['invest_relation_input_capacity'],
                 invest_relation_output_capacity=cy['invest_relation_output_capacity'],
                 inflow_conversion_factor=cy["efficiency inflow"],
@@ -1353,7 +1378,7 @@ def createOemofNodes(scenario_obj, calc_years):
                     interest_rate=0, #interest rate was already considered in adaptForObjective computation. Considering here would lead to problems if env impacts are included in ep_costs
                     fixed_costs=cy['om'] * tstp/8760))
             nodes.append(storage)
-            
+
             logging.debug(f'{stor} (storage) created.')
 
         #if there is an already existing storage   
@@ -1386,10 +1411,11 @@ def createOemofNodes(scenario_obj, calc_years):
                         interest_rate=0
                         ))},
                 loss_rate=cy['capacity loss'],
-                initial_storage_level=None,
+                initial_storage_level=None if cy['initial level'] == 'opt' 
+                    else cy['initial level'],
                 balanced=bool(cy['balanced']),
-                max_storage_level=cy["capacity max"],
-                min_storage_level=cy["capacity min"],
+                max_storage_level=cy["level max"],
+                min_storage_level=cy["level min"],
                 invest_relation_input_capacity=cy['invest_relation_input_capacity'],
                 invest_relation_output_capacity=cy['invest_relation_output_capacity'],
                 inflow_conversion_factor=cy["efficiency inflow"],
