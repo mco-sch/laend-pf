@@ -161,7 +161,7 @@ def optimizeForObjective(i, scenario, timeindex, periods, calc_years, run_name, 
     None.
     '''
 
-    # get admin things out of the way: logger, start time, where to save things etc.
+    # get admin things out of the way: logger, start time, where to save things
     if not i.find('|') == -1:
         i_name = i.replace('|', ',')
     else: i_name = i
@@ -181,40 +181,51 @@ def optimizeForObjective(i, scenario, timeindex, periods, calc_years, run_name, 
     logging.info(f'Starting calculation for {i} at {obj_time}')
 
     # read weight and normalization factors for environmental impacts
-    weightEnv, normalizationEnv = utils.readWeightingNormalization(config_pf.filename_weight_and_normalisation)
+    weightEnv, normalizationEnv = utils.readWeightingNormalization(
+        config_pf.filename_weight_and_normalisation)
 
     #determine goal and weighting of environment and cost factors
     goals = utils.determineGoalForObj(i)
 
-    # determine correction factor for solver for env. goals where values are very small
+    # determine correction factor for solver for env. goals where values are 
+    # very small
     c_factor = utils.determineCfactorForSolver(i)
 
-    # sum environmental & environmental impacts based on weight, normalization and c_factor
-    scenario_obj = utils.adaptForObjective(scenario, i, weightEnv, normalizationEnv, goals, c_factor, calc_years)
+    # sum environmental & environmental impacts based on weight, normalization 
+    # and c_factor
+    scenario_obj = utils.adaptForObjective(scenario, i, weightEnv, 
+                                           normalizationEnv, goals, c_factor, 
+                                           calc_years)
 
 
     ###################
-    #in myopic laend, a lot of functions about climate_neutral/emission constraint,
-    #myopic nature of computation are inserted here.
+    #in myopic laend, a lot of functions about climate_neutral/emission 
+    #constraint, myopic nature of computation are inserted here.
     ###################
 
 
 
-    ###############################################################################
+    ###########################################################################
     ####Create oemof energy system and solve
-    ###############################################################################
+    ###########################################################################
 
     #initialization of the energy system
     logging.info('Initializing energy system')
     
     #create the energy system
-    es = solph.EnergySystem(
-        timeindex=timeindex,
-        timeincrement=[1] * len(timeindex),
-        periods=periods,
-        infer_last_interval=False,
-        )
-    
+    if config_pf.multiperiod_pf == True:
+        es = solph.EnergySystem(
+            timeindex=timeindex,
+            timeincrement=[1] * len(timeindex),
+            periods=periods,
+            infer_last_interval=False,
+            )
+    else:
+        es = solph.EnergySystem(
+            timeindex=timeindex,
+            infer_last_interval=True,
+            )
+
     #create oemof objects
     new_nodes = utils.createOemofNodes(scenario_obj, calc_years)
 
@@ -240,7 +251,15 @@ def optimizeForObjective(i, scenario, timeindex, periods, calc_years, run_name, 
     # solving the linear problem using the given solver
     logging.info(f'Solving the optimization problem for {i}')
     ####################################################
-    om.solve(solver=config_pf.solver, solve_kwargs={"tee": config_pf.solver_verbose})    
+    om.solve(
+        solver=config_pf.solver, 
+        solve_kwargs={
+            "tee": config_pf.solver_verbose,
+            "options": {
+                **config_pf.solver_options
+                }
+            }
+        )
     
     logging.info(f'Successfully solved the optimization problem for {i}')
 
