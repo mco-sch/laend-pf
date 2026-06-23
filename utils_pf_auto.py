@@ -380,7 +380,7 @@ def createWindPowerPlantFixedFlow(scenario, my_weather, run_name, time):
     items_dict = {}
     key = None
     for i,x in scenario["renewables"].iterrows():
-        if x['label'][:4] == 'wind':
+        if x['label'][:4] == 'wind' and pd.notna(x['info1']):
             if key != x['label'][:-3]: #efficiency check, that an already existing key is not written again
                 key = x['label'][:-3]
                 value = {
@@ -393,11 +393,11 @@ def createWindPowerPlantFixedFlow(scenario, my_weather, run_name, time):
     logging.info('Test, if scenario-excel does already contain wind speed')
     
     for item in items_dict.keys():
-        default_wind_speed_timeseries = pd.Series(scenario['timeseries'][item + '.fix'])  
+        wind_speed_timeseries = pd.Series(scenario['timeseries'][item + '.fix'])  
     
         #if scenario-excel already contains wind speed values,
         #use these values for computation of wind turbine's power-output
-        if all(np.isfinite(v) for v in default_wind_speed_timeseries):
+        if all(np.isfinite(v) for v in wind_speed_timeseries):
             #windpowerlib.oedb as another option to get power-curves
             windPowerPlant = {
                 'turbine_type': items_dict[item]['turbine_type'],
@@ -407,12 +407,12 @@ def createWindPowerPlantFixedFlow(scenario, my_weather, run_name, time):
             power_curve_values = windPowerPlant.power_curve['value']
                 
             windPowerPlant.power_output = power_output.power_curve(
-                wind_speed=default_wind_speed_timeseries,
+                wind_speed=wind_speed_timeseries,
                 power_curve_wind_speeds=power_curve_wind_speeds,
                 power_curve_values=power_curve_values)
     
         #if there is neither a pvgis weather file nor information by scenario-timeseries given, raise error
-        elif my_weather == None and not all(np.isfinite(v) for v in default_wind_speed_timeseries):
+        elif my_weather == None and not all(np.isfinite(v) for v in wind_speed_timeseries):
             raise ValueError("No wind speeds defined! Either use a pvgis datafile or insert wind speed data to timeseries in scenario-excel")
         
         #if scenario-excel doesn't already contain wind speed values,
@@ -1140,18 +1140,14 @@ def createOemofNodes(scenario_obj, calc_years):
     for i, x in scenario_obj['renewables'].iterrows():
         if x['initially_installed_capacity'] > 0:
             x_label = x['label'][:-9]
-            if x_label in renewables_dict:
-                renewables_dict[x_label]['existing'] = x
-            else:
+            if x_label not in renewables_dict:
                 renewables_dict[x_label] = {}
-                renewables_dict[x_label]['existing'] = x         
+            renewables_dict[x_label]['existing'] = x         
         else:
             x_label = x['label'][:-3]
-            if x_label in renewables_dict:
-                renewables_dict[x_label][f'{x["label"][-2:]}'] = x #writes each year separately to renewables_dict[rnw]
-            else:
-                renewables_dict[x_label] = {} #if renewables_dict[rnw] is not yet exisiting, generate!
-                renewables_dict[x_label][f'{x["label"][-2:]}'] = x
+            if x_label not in renewables_dict:
+                renewables_dict[x_label] = {}
+            renewables_dict[x_label][f'{x["label"][-2:]}'] = x #writes each year separately to renewables_dict[rnw]
     
     #go through clustered renewables and write timeseries for multi period optimization
     for rnw in renewables_dict.keys():
