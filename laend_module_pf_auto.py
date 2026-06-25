@@ -263,11 +263,10 @@ def optimizeForObjective(i, scenario, timeindex, periods, calc_years, run_name, 
     
     logging.info(f'Successfully solved the optimization problem for {i}')
 
+    return om
 
-    ###############################################################################
-    ####Process results
-    ###############################################################################      
-       
+  
+def processResults(om, i, run_name, time, calc_years, scenario):    
     logging.info('Saving oemof results for further processing')
     results_main = solph.processing.results(om)
     results_meta = solph.processing.meta_results(om)
@@ -275,26 +274,33 @@ def optimizeForObjective(i, scenario, timeindex, periods, calc_years, run_name, 
     #process results
     combined, investments, variable, flow_overview, LCA_columns = utils.processResults(results_main, results_meta, calc_years, scenario)
     
-    #write results to .xlsx:
+    #write results in different formats to .xlsx ans .csv:
     with pd.ExcelWriter(f'{run_name}\\files\\Results for {i}_{time}.xlsx') as writer:
         combined.to_excel(writer, sheet_name='combined')
         investments.to_excel(writer, sheet_name='investments')
         variable.to_excel(writer, sheet_name='variable')
     
     flow_overview.to_excel(f'{run_name}\\files\\Results for {i}_FlowOverview_{time}.xlsx')
-    
+    flow_overview.to_csv(f'{run_name}\\files\\Results for {i}_FlowOverview_{time}.csv', 
+                         sep=';', 
+                         decimal=',')
+  
     combined_summarization = utils.summarizeIndividualResults(combined, LCA_columns, calc_years)
-    
     with pd.ExcelWriter(f'{run_name}\\files\\Results for {i}_summarized_{time}.xlsx') as writer:
         combined_summarization.to_excel(writer, sheet_name='combined')
         investments.to_excel(writer, sheet_name='investments')
         variable.to_excel(writer, sheet_name='variable')
-        
-    combined_annualized = utils.annualization(combined_summarization)
-    
+    combined_summarization.to_csv(f'{run_name}\\files\\Results for {i}_summarized_{time}.csv',
+                                 sep=';',
+                                 decimal=',')
+
+    combined_annualized = utils.annualization(combined_summarization)    
     with pd.ExcelWriter(f'{run_name}\\files\\Results for {i}_annualized_{time}.xlsx') as writer:
         combined_annualized.to_excel(writer, sheet_name='combined')
         investments.to_excel(writer, sheet_name='investments')
         variable.to_excel(writer, sheet_name='variable')
+    combined_annualized.to_csv(f'{run_name}\\files\\Results for {i}_annualized_{time}.csv',
+                               sep=';',
+                               decimal=',')
         
         

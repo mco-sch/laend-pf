@@ -36,7 +36,7 @@ if __name__ == "__main__":
             # start running objective-specific calculations in parallel
             for i in config.objective:
                 # pool.apply_async(laend_module.optimizeForObjective, args=(i, tech, factors, emission_limits, run_name, time)) #old version
-                pool.apply_async(laend_module.optimizeForObjective, args=(i, scenario, timeindex, periods, calc_years, run_name, time))        
+                om = pool.apply_async(laend_module.optimizeForObjective, args=(i, scenario, timeindex, periods, calc_years, run_name, time))        
     
     
             pool.close()
@@ -45,8 +45,11 @@ if __name__ == "__main__":
         else: 
             for i in config.objective:
                 # laend_module.optimizeForObjective(i, tech, factors, emission_limits, run_name, time) #old version
-                laend_module.optimizeForObjective(i, scenario, timeindex, periods, calc_years, run_name, time) 
+                om = laend_module.optimizeForObjective(i, scenario, timeindex, periods, calc_years, run_name, time) 
    
+        
+        laend_module.processResults(om, i, run_name, time, calc_years, scenario)
+        
         # run the final result aggregation. Only works if all optimization problems led to a solution
         #final = laend_module.combineResults(run_name, time)
 
