@@ -48,8 +48,12 @@ if __name__ == "__main__":
                 om = laend_module.optimizeForObjective(i, scenario, timeindex, periods, calc_years, run_name, time) 
    
         
-        laend_module.processResults(om, i, run_name, time, calc_years, scenario)
-        
+        if om.feasible:
+            laend_module.processResults(om, i, run_name, time, calc_years, scenario)
+        else:
+            logging.critical(f'Optimization for {i} was infeasible — stopping.')
+            raise SystemExit(1)
+
         # run the final result aggregation. Only works if all optimization problems led to a solution
         #final = laend_module.combineResults(run_name, time)
 

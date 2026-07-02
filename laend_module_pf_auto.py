@@ -3,6 +3,8 @@
 import logging
 from datetime import datetime
 import pandas as pd
+import pyomo.environ as pyo
+import gc
 
 # import oemof libraries
 import oemof.solph as solph
@@ -235,7 +237,14 @@ def optimizeForObjective(i, scenario, timeindex, periods, calc_years, run_name, 
 
     # creation of a least cost model from the energy system
     logging.info(f'Creating oemof model for {i}')
+    
+    # disable garbage collection to speed up model creation (relevant for large models)
+    gc.disable()
     om = Model(es, discount_rate=config_pf.DiscountRate)
+
+    #ask the solver to return dual values (only shadow prices) of the constraints.
+    logging.info('Create dual values for constraints')
+    om.dual = pyo.Suffix(direction=pyo.Suffix.IMPORT)
 
     # set emission constraint (if config_pf.emission_constraint = False, all emissions & emission_constraint = 0)
 #    if not emission_constraint == 0:
@@ -251,8 +260,8 @@ def optimizeForObjective(i, scenario, timeindex, periods, calc_years, run_name, 
     # solving the linear problem using the given solver
     logging.info(f'Solving the optimization problem for {i}')
     ####################################################
-    om.solve(
-        solver=config_pf.solver, 
+    solver_results = om.solve(
+        solver=config_pf.solver,
         solve_kwargs={
             "tee": config_pf.solver_verbose,
             "options": {
@@ -260,8 +269,10 @@ def optimizeForObjective(i, scenario, timeindex, periods, calc_years, run_name, 
                 }
             }
         )
-    
-    logging.info(f'Successfully solved the optimization problem for {i}')
+
+    logging.info(f'Solving the optimization problem for {i} finished')
+    termination = solver_results.solver.termination_condition
+    om.feasible = str(termination) == "optimal"
 
     return om
 
@@ -273,15 +284,22 @@ def processResults(om, i, run_name, time, calc_years, scenario):
 
     #process results
     combined, investments, variable, flow_overview, LCA_columns = utils.processResults(results_main, results_meta, calc_years, scenario)
-    
+    marginal_price_el = utils.extract_bus_marginal_prices(om,
+                                    om.es.timeindex,
+                                    bus_label=config_pf.varname_el_bus,
+                                    period_scaling=config_pf.aux_year_steps
+                                    )
+
     #write results in different formats to .xlsx ans .csv:
     with pd.ExcelWriter(f'{run_name}\\files\\Results for {i}_{time}.xlsx') as writer:
         combined.to_excel(writer, sheet_name='combined')
         investments.to_excel(writer, sheet_name='investments')
         variable.to_excel(writer, sheet_name='variable')
     
-    flow_overview.to_excel(f'{run_name}\\files\\Results for {i}_FlowOverview_{time}.xlsx')
     flow_overview.to_csv(f'{run_name}\\files\\Results for {i}_FlowOverview_{time}.csv', 
+                         sep=';', 
+                         decimal=',')
+    marginal_price_el.to_csv(f'{run_name}\\files\\Results for {i}_marginal_prices_{time}.csv', 
                          sep=';', 
                          decimal=',')
   

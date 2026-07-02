@@ -1883,9 +1883,10 @@ def processResults(results_main, results_meta, calc_years, scenario):
     nodes = [x for x in results_main.keys() if x[1] is None]
     flows = [x for x in results_main.keys() if x[1] is not None]
 
-    investments = pd.DataFrame()
-    variable = pd.DataFrame()
-    flow_overview = pd.DataFrame()
+    #collect series in dicts and concat once at the end to avoid DataFrame fragmentation
+    investments = {}
+    variable = {}
+    flow_overview = {}
     ####processing nodes (storages)
     nodes_list = []
     
@@ -2009,8 +2010,9 @@ def processResults(results_main, results_meta, calc_years, scenario):
 
                     
     ####final preparation and ordering for excel export
-    investments = investments.T
-    variable = variable.T
+    #concat all collected series at once (avoids fragmentation), then transpose
+    investments = (pd.concat(investments, axis=1) if investments else pd.DataFrame()).T
+    variable = (pd.concat(variable, axis=1) if variable else pd.DataFrame()).T
     
     #combine invetment df and variable df to one total overview df, ordered by periods (ascending) and type (invest to variable)
     combined = pd.concat([investments, variable])
@@ -2026,18 +2028,21 @@ def processResults(results_main, results_meta, calc_years, scenario):
     except:
         proxy = 'nothing'
 
+    #build the flow overview DataFrame in one go from the collected series (avoids fragmentation)
+    flow_overview = pd.concat(flow_overview, axis=1) if flow_overview else pd.DataFrame()
+
     return combined, investments, variable, flow_overview, LCA_columns
 
 
 
 def processing_investments(y, r, t, results_meta):
     '''
-        Parameters
+    Parameters
     ----------
-    y : integer - year of interest
-    r : series - representing a row containing results of a specific technology
-    t : series - representing a row containing parameter information of a specific technology (coming from scenario excel)
-    results_meta : dict containing objective and information about the problem and solver
+    y: integer, year of interest
+    r: series, representing a row containing results of a specific technology
+    t: series, representing a row containing parameter information of a specific technology (coming from scenario excel)
+    results_meta: dict, containing objective and information about the problem and solver
 
     Returns
     -------
@@ -2063,11 +2068,11 @@ def processing_variable_flows(variable, flow, results_main, results_meta, flow_o
     '''
     Parameters
     ----------
-    variable: empty pd.DataFrame - will be filled within this function with the wanted data/information
+    variable: dict, filled here and concatenated into a DataFrame by the caller; was empty pd.DataFrame - will be filled within this function with the wanted data/information
     flow: dictionary containing the flows of oemof main_results
     results_main: dict containing the results for all nodes and flows
     results_meta: dict containing objective and information about the problem and solver
-    flow_overview: DataFrame containing overview of flows
+    flow_overview: dict accumulating flow series (concatenated into a DataFrame by the caller)
     calc_years: list of representative years (=periods) that are optimized
     scenario: scenario dictionary containing all relevant techno-ecological and -economic information.
 
@@ -2249,9 +2254,72 @@ def processing_variable_flows(variable, flow, results_main, results_meta, flow_o
 
 
 
+def extract_bus_marginal_prices(om, timeindex, bus_label, period_scaling=None):
+    """
+    Read the dual of a bus balance constraint as a per-timestep marginal price.
+
+    Parameters
+    ----------
+    om : oemof.solph.Model
+        The SOLVED model (om.dual Suffix must have been declared before solving).
+    timeindex : pandas.DatetimeIndex
+        The model time index (the `timeindex` returned by
+        utils.defineYearsForCalculation / passed into optimizeForObjective).
+    bus_label : str
+        Label of the electricity bus.
+    period_scaling : int | None
+        Optional integer divisor (e.g. config_pf.aux_year_steps) to undo the
+        aux-year cost scaling done in utils to face different period durations
+        between intermediate periods and the last period (named "oemof v0.5.2
+        bug workaround"). It is applied only to timesteps that do NOT belong to
+        the last modeling period. None = no rescaling.
+
+    Returns
+    -------
+    pandas.Series
+        Marginal price (objective units, e.g. EUR/kWh) indexed by timeindex.
+    """
+
+    # locate the Bus node object by its label
+    bus_node = None
+    for node in om.es.nodes:
+        if str(node) == bus_label:
+            bus_node = node
+            break
+    if bus_node is None:
+        raise KeyError(f'Bus {bus_label!r} not found in the energy system.')
+
+    # read om.dual[BusBlock.balance[bus_node, p, t]] for every timestep t
+    # the balance constraint is always keyed by (node, period, timestep),
+    # even in single-period mode where the period p is always 0
+    prices = {}
+    for (node, p, t), constr in om.BusBlock.balance.items():
+        if node is not bus_node:
+            continue
+        # key by (period, timestep) so multi-period runs don't collide;
+        # in single-period mode p is always 0, so this reduces to timestep order
+        prices[(p, t)] = om.dual[constr]
+
+    # order chronologically (period first, then timestep) and attach the datetime index
+    series = pd.Series([prices[k] for k in sorted(prices)], name=f'marginal_price_{bus_label}')
+    if len(series) == len(timeindex):
+        series.index = timeindex
+
+    # optionally undo the aux-year period scaling in all but the last period
+    if period_scaling is not None and len(series) == len(timeindex):
+        last_year = timeindex[-1].year
+        divisor = pd.Series(
+            [period_scaling if ts.year != last_year else 1 for ts in timeindex],
+            index=series.index,
+        )
+        series = series / divisor
+
+    return series
+
+
 def summarizeIndividualResults(xls, LCA_columns, calc_years):
     '''
-    summarizeIndividualResults summarizes individual results/flows for subsequent (external) figure generation
+    summarizes individual results/flows for subsequent (external) figure generation
     Concretely: 
         regional and overregional grid fees are summed up to one grid fee position;
         water supply costs, that are differentiated into water_ultrapure and water_deionized are summed up to one water supply position

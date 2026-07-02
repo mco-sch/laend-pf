@@ -24,9 +24,10 @@ calc_end = datetime(end_year, 12, 31, 23, 00)
 number_of_time_steps = None #8*24 #None
 
 
-# Auxiliary years (5 year steps)
+# Auxiliary years
 aux_years = True  # True to use representative years and select the steps. False to optimize each year individually
 aux_year_steps = 5  # years
+varname_el_bus = 'bus_el-mix' #name of electricity bus which is later used for shadow price calculation.
 
 # choose, if multi-period perfect foresight optimization (True) or myopic (False) 
 # be aware: 'myopic' is currently not really 'myopic', but only available for one single year
