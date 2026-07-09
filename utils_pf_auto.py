@@ -910,8 +910,7 @@ def createOemofNodes(scenario_obj, calc_years):
                     if y != cy_list_adapted[-1]:
                         var_exc_costs.extend([(x[f'c_avar_{y}'] + x['excess_env'])* config_laend.aux_year_steps] * tstp)
                     if y == cy_list_adapted[-1]:
-                        var_exc_costs.extend([x[f'c_avar_{y}'] + x['excess_env']] * tstp)                        
-            
+                        var_exc_costs.extend([x[f'c_avar_{y}'] + x['excess_env']] * tstp)                                    
             #check, if variable costs (not only periodically, but also within a period)
             elif x['excess_costs'] == 'c_var':           
                 var_exc_costs = []
@@ -920,20 +919,34 @@ def createOemofNodes(scenario_obj, calc_years):
                     if y !=  cy_list_adapted[-1]:
                         var_exc_costs.extend(((scenario_obj['timeseries'][f'{x["label"]}_{y}.timevariable_costs'] + x['excess_env']) * config_laend.aux_year_steps).tolist())
                     if y == cy_list_adapted[-1]:
-                        var_exc_costs.extend((scenario_obj['timeseries'][f'{x["label"]}_{y}.timevariable_costs'] + x['excess_env']).tolist())
-            
+                        var_exc_costs.extend((scenario_obj['timeseries'][f'{x["label"]}_{y}.timevariable_costs'] + x['excess_env']).tolist()) 
             #if one and the same excess costs are valid for all periods
             else:
                 var_exc_costs = []
                 #due to oemof v0.5.2 bug, workaround (multiplying variable_costs by period duration except last period) necessary
                 var_exc_costs.extend([(x['excess_costs'] + x['excess_env']) * config_laend.aux_year_steps] * tstp * (len(cy_list_adapted)-1))
                 var_exc_costs.extend([x['excess_costs'] + x['excess_env']] * tstp)
-                
-            #generate oemof object for excess (sink)
+
+            flow_kwargs = {'variable_costs': var_exc_costs}
+
+            #check, if variable maximum excess flow is defined
+            #if maximum excess flows are varying across different periods, code must be adapted here. 
+            if x['excess_max'] == 'max_var':
+                max_flow = []
+                max_flow.extend((scenario_obj['timeseries'][f'{x["label"]}_{y}.max_var']).tolist() * len(cy_list_adapted))
+                flow_kwargs['max'] = max_flow
+            else:
+                max_flow = []
+                max_flow.extend([x['excess_max']] * tstp * len(cy_list_adapted))
+                flow_kwargs['max'] = max_flow
+
+            #generate oemof object for excess (sink) w/ maximum flow limitation
             bus_excess = solph.components.Sink(
                 label=x['label'] + '_excess',
-                inputs={busd[x['label']]: solph.flows.Flow(
-                    variable_costs=var_exc_costs)})
+                inputs={busd[x['label']]: 
+                    solph.flows.Flow(
+                        nominal_value=1,
+                        **flow_kwargs)})
 
             nodes.append(bus_excess)
         
@@ -992,15 +1005,28 @@ def createOemofNodes(scenario_obj, calc_years):
                         #due to oemof v0.5.2 bug, workaround (multiplying variable_costs by period duration except last period) necessary
                         timeseries_list.extend([(scenario_obj['timeseries'][col] + cy['var_env1']) * config_laend.aux_year_steps] * (len(calc_years)-1))
                         timeseries_list.extend([scenario_obj['timeseries'][col] + cy['var_env1']])
+                flow_kwargs = {'variable_costs': timeseries_list}
             else:                   
                 #due to oemof v0.5.2 bug, workaround (multiplying variable_costs by period duration except last period) necessary
                 timeseries_list.extend([(cy['variable_costs'] + cy['var_env1']) * config_laend.aux_year_steps] * tstp * (len(calc_years)-1))
                 timeseries_list.extend([cy['variable_costs'] + cy['var_env1']] * tstp)
-        
+                flow_kwargs = {'variable_costs': timeseries_list}
+
+            #check, if variable maximum flow is defined
+            if cy['max'] == 'max_var':
+                max_flow = []
+                max_flow.extend((scenario_obj['timeseries'][f'{cy["label"]}.max_var']).tolist() * len(cy_list_adapted))
+                flow_kwargs['max'] = max_flow
+            else:
+                max_flow = []
+                max_flow.extend([cy['max']] * tstp * len(cy_list_adapted))
+                flow_kwargs['max'] = max_flow
+
         #if there are individual input parameters for each period
         else:
             #collect information for timeseries and generate timeseries for multi period optimization
             timeseries_list = []
+            max_flow = []
             for calc_year in sources_dict[src]:
                 cy = sources_dict[src][calc_year]
                 if cy['timevariable_costs'] == True:
@@ -1021,6 +1047,15 @@ def createOemofNodes(scenario_obj, calc_years):
                         timeseries_list.extend([(cy['variable_costs'] + cy['var_env1']) * config_laend.aux_year_steps] * tstp)
                     elif str(calc_year) == cy_list_adapted[-1]:
                         timeseries_list.extend([cy['variable_costs'] + cy['var_env1']] * tstp)
+
+                #check, if variable maximum flow is defined        
+                if cy['max'] == 'max_var':
+                    max_flow.extend((scenario_obj['timeseries'][f'{cy["label"]}.max_var']).tolist())
+                else:
+                    max_flow.extend([cy['max']] * tstp)
+
+            flow_kwargs = {'variable_costs': timeseries_list,
+                           'max': max_flow}
                 
         sources_dict[src]['timeseries'] = timeseries_list #timeseries_list contains financial and environmental data
         
@@ -1029,8 +1064,7 @@ def createOemofNodes(scenario_obj, calc_years):
             label=src,
             outputs={busd[to]: solph.flows.Flow(
                 nominal_value=1,
-                variable_costs=timeseries_list,
-                max = cy['max'])})
+                **flow_kwargs)})
         nodes.append(source)
         
         logging.debug(f'{src} (source) created.')
