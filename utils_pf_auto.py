@@ -1034,8 +1034,7 @@ def createOemofNodes(scenario_obj, calc_years):
                     if not str(calc_year) == cy_list_adapted[-1]:
                         timeseries_list.extend((scenario_obj['timeseries'][f'{cy["label"]}.timevariable_costs'] + cy['var_env1']) * config_laend.aux_year_steps)
                     elif str(calc_year) == cy_list_adapted[-1]:
-                        timeseries_list.extend(scenario_obj['timeseries'][f'{cy["label"]}.timevariable_costs'] + cy['var_env1'])
-                        break                
+                        timeseries_list.extend(scenario_obj['timeseries'][f'{cy["label"]}.timevariable_costs'] + cy['var_env1'])             
                 else:
                     #due to oemof v0.5.2 bug, workaround (multiplying variable_costs by period duration except last period) necessary
                     if not str(calc_year) == cy_list_adapted[-1]:
