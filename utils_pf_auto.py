@@ -1000,11 +1000,9 @@ def createOemofNodes(scenario_obj, calc_years):
             if cy['timevariable_costs'] == True:
                 if not any(col.split(".")[0] == cy['label'] for col in scenario_obj['timeseries'].columns.values):
                     raise ValueError("Please make sure labels in timeseries are the same as in commodity_sources")
-                for col in scenario_obj['timeseries'].columns.values:
-                    if col.split('.')[0] == cy['label']:
-                        #due to oemof v0.5.2 bug, workaround (multiplying variable_costs by period duration except last period) necessary
-                        timeseries_list.extend([(scenario_obj['timeseries'][col] + cy['var_env1']) * config_laend.aux_year_steps] * (len(calc_years)-1))
-                        timeseries_list.extend([scenario_obj['timeseries'][col] + cy['var_env1']])
+                #due to oemof v0.5.2 bug, workaround (multiplying variable_costs by period duration except last period) necessary
+                timeseries_list.extend([(scenario_obj['timeseries'][f'{cy["label"]}.timevariable_costs'] + cy['var_env1']) * config_laend.aux_year_steps] * (len(calc_years)-1))
+                timeseries_list.extend([scenario_obj['timeseries'][f'{cy["label"]}.timevariable_costs'] + cy['var_env1']])
                 flow_kwargs = {'variable_costs': timeseries_list}
             else:                   
                 #due to oemof v0.5.2 bug, workaround (multiplying variable_costs by period duration except last period) necessary
@@ -1032,15 +1030,12 @@ def createOemofNodes(scenario_obj, calc_years):
                 if cy['timevariable_costs'] == True:
                     if not any(col.split(".")[0] == cy['label'] for col in scenario_obj['timeseries'].columns.values):
                         raise ValueError("Please make sure labels in timeseries are the same as in commodity_sources")
-                    for col in scenario_obj['timeseries'].columns.values:
-                        if col.split('.')[0] == cy['label']:
-                            #due to oemof v0.5.2 bug, workaround (multiplying variable_costs by period duration except last period) necessary
-                            if not str(calc_year) == cy_list_adapted[-1]:
-                                timeseries_list.extend((scenario_obj['timeseries'][col] + cy['var_env1']) * config_laend.aux_year_steps)
-                            elif str(calc_year) == cy_list_adapted[-1]:
-                                timeseries_list.extend(scenario_obj['timeseries'][col] + cy['var_env1'])
-                                break
-                                
+                    #due to oemof v0.5.2 bug, workaround (multiplying variable_costs by period duration except last period) necessary
+                    if not str(calc_year) == cy_list_adapted[-1]:
+                        timeseries_list.extend((scenario_obj['timeseries'][f'{cy["label"]}.timevariable_costs'] + cy['var_env1']) * config_laend.aux_year_steps)
+                    elif str(calc_year) == cy_list_adapted[-1]:
+                        timeseries_list.extend(scenario_obj['timeseries'][f'{cy["label"]}.timevariable_costs'] + cy['var_env1'])
+                        break                
                 else:
                     #due to oemof v0.5.2 bug, workaround (multiplying variable_costs by period duration except last period) necessary
                     if not str(calc_year) == cy_list_adapted[-1]:
