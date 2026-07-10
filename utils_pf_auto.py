@@ -1015,7 +1015,7 @@ def createOemofNodes(scenario_obj, calc_years):
             #check, if variable maximum flow is defined
             if cy['max'] == 'max_var':
                 max_flow = []
-                max_flow.extend((scenario_obj['timeseries'][f'{cy["label"]}.max_var']).tolist() * len(cy_list_adapted))
+                max_flow.extend((scenario_obj['timeseries'][f'{cy["label"]}_{y}.max_var']).tolist() * len(cy_list_adapted))
                 flow_kwargs['max'] = max_flow
             else:
                 max_flow = []
@@ -1050,7 +1050,7 @@ def createOemofNodes(scenario_obj, calc_years):
 
                 #check, if variable maximum flow is defined        
                 if cy['max'] == 'max_var':
-                    max_flow.extend((scenario_obj['timeseries'][f'{cy["label"]}.max_var']).tolist())
+                    max_flow.extend((scenario_obj['timeseries'][f'{cy["label"]}_{y}.max_var']).tolist())
                 else:
                     max_flow.extend([cy['max']] * tstp)
 
