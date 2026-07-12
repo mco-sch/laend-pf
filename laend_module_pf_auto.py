@@ -270,6 +270,22 @@ def optimizeForObjective(i, scenario, timeindex, periods, calc_years, run_name, 
             }
         )
 
+    for var in om.component_data_objects(pyo.Var, active=True):
+        if var.is_binary() or var.is_integer():
+            var.fix(round(pyo.value(var)))
+            n_fixed += 1
+    
+    if n_fixed > 0:
+        logging.info(f'Re-solving fixed-integer LP ({n_fixed} variables \
+                     fixed) to optain valid duals')
+        solver_results = om.solve(
+            solver=config_pf.solver,
+            solve_kwargs={
+                "tee": config_pf.solver_verbose,
+                "options": {
+                    **config_pf.solver_options
+                    }})
+
     logging.info(f'Solving the optimization problem for {i} finished')
     termination = solver_results.solver.termination_condition
     om.feasible = str(termination) == "optimal"
