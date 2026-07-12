@@ -270,6 +270,11 @@ def optimizeForObjective(i, scenario, timeindex, periods, calc_years, run_name, 
             }
         )
 
+    # fix integer variables to obtain valid duals (only relevant for mixed-integer problems)
+    # Dual values / shadow prices are only valid for linear problems. If the problem is mixed-integer,
+    # the dual values are not valid. Therefore, we fix the integer variables and resolve the problem
+    # to obtain valid duals.
+    n_fixed = 0
     for var in om.component_data_objects(pyo.Var, active=True):
         if var.is_binary() or var.is_integer():
             var.fix(round(pyo.value(var)))
