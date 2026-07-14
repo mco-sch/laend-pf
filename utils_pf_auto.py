@@ -932,7 +932,7 @@ def buildSourceNonConvex(ordered_rows, tstp):
         nc_kwargs['shutdown_costs'] = _period_scaled_cost('shutdown_costs')
 
     return {
-        'nominal_value': _val(first, 'nominal_value', 1),
+        'nominal_value': _val(first, 'max', 1),
         'min': min_list,
         'nonconvex': solph.NonConvex(**nc_kwargs),
     }
