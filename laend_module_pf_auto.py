@@ -270,6 +270,14 @@ def optimizeForObjective(i, scenario, timeindex, periods, calc_years, run_name, 
             }
         )
 
+    logging.info(f'Solving the optimization problem for {i} finished')
+    termination = solver_results.solver.termination_condition
+    om.feasible = str(termination) == "optimal"
+    
+    if not om.feasible:
+        logging.critical(f'Optimization for {i} was infeasible — stopping.')
+        raise SystemExit(1)
+
     # fix integer variables to obtain valid duals (only relevant for mixed-integer problems)
     # Dual values / shadow prices are only valid for linear problems. If the problem is mixed-integer,
     # the dual values are not valid. Therefore, we fix the integer variables and resolve the problem
@@ -290,10 +298,6 @@ def optimizeForObjective(i, scenario, timeindex, periods, calc_years, run_name, 
                 "options": {
                     **config_pf.solver_options
                     }})
-
-    logging.info(f'Solving the optimization problem for {i} finished')
-    termination = solver_results.solver.termination_condition
-    om.feasible = str(termination) == "optimal"
 
     return om
 

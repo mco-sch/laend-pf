@@ -34,25 +34,31 @@ if __name__ == "__main__":
             pool = mp.Pool()
     
             # start running objective-specific calculations in parallel
+            # keep each AsyncResult handle paired with its objective, so it can
+            # be retrieved after the pool finishes
+            async_results = []
             for i in config.objective:
-                # pool.apply_async(laend_module.optimizeForObjective, args=(i, tech, factors, emission_limits, run_name, time)) #old version
-                om = pool.apply_async(laend_module.optimizeForObjective, args=(i, scenario, timeindex, periods, calc_years, run_name, time))        
-    
-    
+                res = pool.apply_async(
+                    laend_module.optimizeForObjective,
+                    args=(i, scenario, timeindex, periods, calc_years, run_name, time)
+                    )
+                async_results.append((i, res))
+
             pool.close()
             pool.join()
-    
+
+            # retrieve results and process them (in the main process)
+            for i, res in async_results:
+                om = res.get()   # blocks until ready; re-raises any worker exception
+                laend_module.processResults(om, i, run_name, time, calc_years, scenario)
+
         else: 
             for i in config.objective:
                 # laend_module.optimizeForObjective(i, tech, factors, emission_limits, run_name, time) #old version
                 om = laend_module.optimizeForObjective(i, scenario, timeindex, periods, calc_years, run_name, time) 
-   
-        
-        if om.feasible:
-            laend_module.processResults(om, i, run_name, time, calc_years, scenario)
-        else:
-            logging.critical(f'Optimization for {i} was infeasible — stopping.')
-            raise SystemExit(1)
+
+                # process the results of the optimization
+                laend_module.processResults(om, i, run_name, time, calc_years, scenario)
 
         # run the final result aggregation. Only works if all optimization problems led to a solution
         #final = laend_module.combineResults(run_name, time)

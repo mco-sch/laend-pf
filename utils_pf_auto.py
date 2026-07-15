@@ -899,17 +899,12 @@ def buildSourceNonConvex(ordered_rows, tstp):
 
     #NonConves is enabled as soon as any of the following columns is present
     #and non-zero in any of the periods.
-    trigger_cols = ['min', 'startup_costs', 'shutdown_costs',
+    trigger_cols = ['startup_costs', 'shutdown_costs',
                     'minimum_uptime', 'minimum_downtime']
     if not any(_val(row, col, 0) for row in ordered_rows for col in trigger_cols):
         return {}
 
     n_periods = len(ordered_rows)
-
-    #minimum load as a fraction of nominal_value, per time step and period
-    min_list = []
-    for row in ordered_rows:
-        min_list.extend([_val(row, 'min', 0)] * tstp)
 
     #start-up / shut-down costs: same aux_year_steps workaround as
     #variable_costs, since oemof v0.5.2 does not scale event costs by the
@@ -932,8 +927,6 @@ def buildSourceNonConvex(ordered_rows, tstp):
         nc_kwargs['shutdown_costs'] = _period_scaled_cost('shutdown_costs')
 
     return {
-        'nominal_value': _val(first, 'max', 1),
-        'min': min_list,
         'nonconvex': solph.NonConvex(**nc_kwargs),
     }
 
@@ -1090,11 +1083,14 @@ def createOemofNodes(scenario_obj, calc_years):
             if cy['max'] == 'max_var':
                 max_flow = []
                 max_flow.extend((scenario_obj['timeseries'][f'{cy["label"]}.max_var']).tolist() * len(cy_list_adapted))
-                flow_kwargs['max'] = max_flow
+                flow_kwargs['max'] = pd.Series(max_flow) / max(max_flow)
+                flow_kwargs['nominal_value'] = max(max_flow)
+                flow_kwargs['min'] = cy['min'] if not pd.isna(cy['min']) else 0
             else:
                 max_flow = []
-                max_flow.extend([cy['max']] * tstp * len(cy_list_adapted))
-                flow_kwargs['max'] = max_flow
+                flow_kwargs['nominal_value'] = cy['max']
+                flow_kwargs['max'] = 1
+                flow_kwargs['min'] = cy['min'] if not pd.isna(cy['min']) else 0
 
             #one source row valid for every period (same period order as above)
             ordered_rows = [cy] * len(calc_years)
@@ -1128,7 +1124,9 @@ def createOemofNodes(scenario_obj, calc_years):
                     max_flow.extend([cy['max']] * tstp)
 
             flow_kwargs = {'variable_costs': timeseries_list,
-                           'max': max_flow}
+                           'nominal_value': max(max_flow),
+                           'max': pd.Series(max_flow) / max(max_flow),
+                           'min': cy['min'] if not pd.isna(cy['min']) else 0}
 
             #per-period source rows in the SAME order as variable_costs / max
             ordered_rows = list(sources_dict[src].values())
@@ -1138,7 +1136,6 @@ def createOemofNodes(scenario_obj, calc_years):
         to = cy['to']
         #nominal_value defaults to 1 (unchanged behaviour); a NonConvex source
         #overrides it with its P_max via buildSourceNonConvex(...)
-        flow_kwargs.setdefault('nominal_value', 1)
         flow_kwargs.update(buildSourceNonConvex(ordered_rows, tstp))
         source = solph.components.Source(
             label=src,
