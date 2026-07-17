@@ -1989,28 +1989,30 @@ def processResults(results_main, results_meta, calc_years, scenario):
     '''
     
     ####general processing
-    nodes = [x for x in results_main.keys() if x[1] is None]
+    storages = [x for x in results_main.keys() if x[1] is None \
+                and isinstance(x[0], solph.components.GenericStorage)]
     flows = [x for x in results_main.keys() if x[1] is not None]
 
     #collect series in dicts and concat once at the end to avoid DataFrame fragmentation
     investments = {}
     variable = {}
     flow_overview = {}
-    ####processing nodes (storages)
-    nodes_list = []
+
+    #collect storage labels (handle storage capacity and flows separately to avoid
+    #overwriting of storage investments (capacity based) by storage flows)
+    stor_labels = {str(s[0]) for s in storages}
     
     if config_laend.multiperiod_pf == True:
-        for node in nodes:
-            nodes_list.append(str(node[0]))
-            if results_main[node]['period_scalars'].notna().any().any():
-                if not (results_main[node]['period_scalars']['total'] == 0).all():
+        for stor in storages:
+            if results_main[stor]['period_scalars'].notna().any().any():
+                if not (results_main[stor]['period_scalars']['total'] == 0).all():
                     #generate an overview of the storage level for all periods
-                    total_flow_series = results_main[node]['sequences']['storage_content']
-                    flow_overview[f'{str(node[0])}_content-level'] = total_flow_series
+                    total_flow_series = results_main[stor]['sequences']['storage_content']
+                    flow_overview[f'{str(stor[0])}_content-level'] = total_flow_series
                     
-                    invest_name = str(node[0])
+                    invest_name = str(stor[0])
                     #iterate through period_scalars (investment results per period)
-                    for y, r in results_main[node]['period_scalars'].iterrows():
+                    for y, r in results_main[stor]['period_scalars'].iterrows():
                                                       
                         #multiply results with specific costs and LCA data
                         scen_stor = scenario['storages']
@@ -2024,12 +2026,15 @@ def processResults(results_main, results_meta, calc_years, scenario):
         
         for flow in flows:
             ####processing mulit-period investment 'flows'
-            #make sure, that only technologies with investments are considered and no (storage-) flow investments overwrite already written node (capacity-) investments
-            if results_main[flow]['period_scalars'].notna().any().any() and not any(str(flow[0]) == x for x in nodes_list) and not any(str(flow[1]) == x for x in nodes_list):
+            #make sure, that only technologies with investments are considered 
+            #and no (storage-) flow investments overwrite already written storage capacity investments
+            if results_main[flow]['period_scalars'].notna().any().any() \
+            and str(flow[0]) not in stor_labels \
+            and str(flow[1]) not in stor_labels:
                 if not (results_main[flow]['period_scalars']['total'] == 0).all():
                     if str(flow[0])[:3] != 'bus':
                         invest_name = str(flow[0])
-                    elif str(flow[0])[:3] == 'bus':
+                    else:
                         invest_name = str(flow[1])       
     
                     #iterate through period_scalars (investment results per period)
@@ -2060,17 +2065,16 @@ def processResults(results_main, results_meta, calc_years, scenario):
     
     #if myopic optimization is activated:
     else:
-        for node in nodes:
-            nodes_list.append(str(node[0]))
-            if results_main[node]['scalars'].notna().any():
-                if not results_main[node]['scalars'].loc['total'] == 0:
+        for stor in storages:
+            if results_main[stor]['scalars'].notna().any():
+                if not results_main[stor]['scalars'].loc['total'] == 0:
                     #generate an overview of the storage level for all periods
-                    total_flow_series = results_main[node]['sequences']['storage_content']
-                    flow_overview[f'{str(node[0])}_content-level'] = total_flow_series
+                    total_flow_series = results_main[stor]['sequences']['storage_content']
+                    flow_overview[f'{str(stor[0])}_content-level'] = total_flow_series
                     
-                    invest_name = str(node[0])
+                    invest_name = str(stor[0])
                     # access investment results
-                    r = results_main[node]['scalars']
+                    r = results_main[stor]['scalars']
                     y = r.name.year
                                                       
                     #multiply results with specific costs and LCA data
@@ -2085,12 +2089,15 @@ def processResults(results_main, results_meta, calc_years, scenario):
                     
         for flow in flows:
             ####processing myopic investment 'flows'
-            #make sure, that only technologies with investments are considered and no (storage-) flow investments overwrite already written node (capacity-) investments
-            if results_main[flow]['scalars'].notna().any() and not any(str(flow[0]) == x for x in nodes_list) and not any(str(flow[1]) == x for x in nodes_list):
+            #make sure, that only technologies with investments are considered 
+            #and no (storage-) flow investments overwrite already written storage capacity investments
+            if results_main[flow]['scalars'].notna().any() \
+            and str(flow[0]) not in stor_labels \
+            and str(flow[1]) not in stor_labels:
                 if not results_main[flow]['scalars'].loc['total'] == 0:
                     if str(flow[0])[:3] != 'bus':
                         invest_name = str(flow[0])
-                    elif str(flow[0])[:3] == 'bus':
+                    else:
                         invest_name = str(flow[1])       
     
                     # access investment results

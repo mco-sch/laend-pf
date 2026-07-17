@@ -242,7 +242,7 @@ def optimizeForObjective(i, scenario, timeindex, periods, calc_years, run_name, 
     gc.disable()
     om = Model(es, discount_rate=config_pf.DiscountRate)
 
-    #ask the solver to return dual values (only shadow prices) of the constraints.
+    #ask the solver to return dual values (e.g. shadow prices) of the constraints.
     logging.info('Create dual values for constraints')
     om.dual = pyo.Suffix(direction=pyo.Suffix.IMPORT)
 
