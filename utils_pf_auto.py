@@ -2220,7 +2220,7 @@ def processing_variable_flows(variable, flow, results_main, results_meta, flow_o
                         if t_name == t['label']:
                             if t['timevariable_costs']:
                                 y_flow_costs = scenario['timeseries'][f'{t["label"]}.timevariable_costs']
-                                y_cost = sum(y_flow_series.values * y_flow_costs.values)
+                                y_cost = sum(y_flow_series.values[:len(y_flow_costs)] * y_flow_costs.values)
                                 break
                             else:
                                 y_cost = y_flow_series.sum() * t['variable_costs']
@@ -2230,7 +2230,7 @@ def processing_variable_flows(variable, flow, results_main, results_meta, flow_o
                         elif f'{t_name}_{str(cy)[-2:]}' == t['label']:
                             if t['timevariable_costs']:
                                 y_flow_costs = scenario['timeseries'][f'{t["label"]}.timevariable_costs']
-                                y_cost = sum(y_flow_series.values * y_flow_costs.values)
+                                y_cost = sum(y_flow_series.values[:len(y_flow_costs)] * y_flow_costs.values)
                                 break
                             else:
                                 y_cost = y_flow_series.sum() * t['variable_costs']
@@ -2261,7 +2261,7 @@ def processing_variable_flows(variable, flow, results_main, results_meta, flow_o
                                         LCA_ser = pd.Series(data=y_flow_series.sum() * t[f'{pre_syllable}_env'], name=f'{flow[0]}/{flow[1]}_{cy}')
                                     elif t[f'{pre_syllable}_costs'] == "c_var":
                                         y_flow_costs = scenario['timeseries'][f'{t["label"]}_{str(cy)[-2:]}.timevariable_costs']
-                                        y_cost = sum(y_flow_series.values * y_flow_costs.values)
+                                        y_cost = sum(y_flow_series.values[:len(y_flow_costs)] * y_flow_costs.values)
                                         LCA_ser = pd.Series(data=y_flow_series.sum() * t[f'{pre_syllable}_env'], name=f'{flow[0]}/{flow[1]}_{cy}')
                                     break
                                 #if not
@@ -2341,7 +2341,7 @@ def processing_variable_flows(variable, flow, results_main, results_meta, flow_o
                                     if str(flow[1]) == t['to1']:
                                         if t['var_to1_costs'] == "timevariable_costs":
                                             y_flow_costs = scenario['timeseries'][f'{t["label"]}.timevariable_costs']
-                                            y_cost = sum(y_flow_series.values * y_flow_costs.values)
+                                            y_cost = sum(y_flow_series.values[:len(y_flow_costs)] * y_flow_costs.values)
                                         else:
                                             y_cost = y_flow_series.sum() * t['var_to1_costs']
                                         LCA_ser = pd.Series(data=y_flow_series.sum() * t['var_env1'], name=f'{flow[0]}/{flow[1]}_{cy}')

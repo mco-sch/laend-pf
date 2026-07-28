@@ -20,7 +20,8 @@ end_year = 2025
 calc_start = datetime(start_year, 1, 1, 00, 00)
 calc_end = datetime(end_year, 12, 31, 23, 00)
 
-# sets number of time steps. set 'None'to get full year, else set number of time steps in one year to look at
+# sets number of time steps. set 'None'to get full year (8760 time steps), 
+# else set number of time steps in one year to look at
 number_of_time_steps = None #8*24 #None
 
 
