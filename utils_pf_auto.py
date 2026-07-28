@@ -2211,16 +2211,16 @@ def processing_variable_flows(variable, flow, results_main, results_meta, flow_o
             #generate an overview of all flows per year and their respective impacts (financial and ecological)
             for cy in calc_years:
                 y_flow_series = pd.Series(data=df[df.index.year == cy]['flow'], name=cy)
-                y_flow_series.index = pd.RangeIndex(1, len(y_flow_series) + 1)
                 
                 ####----commodity flows
                 if str(flow[0])[:8] == 'resource':
                     scen_comm = scenario['commodity_sources']
-                    for i, t in scen_comm.iterrows():
+                    for _, t in scen_comm.iterrows():
                         t_name = str(flow[0])
                         if t_name == t['label']:
                             if t['timevariable_costs']:
-                                y_cost = sum(y_flow_series * scenario['timeseries'][f'{t["label"]}.timevariable_costs'])
+                                y_flow_costs = scenario['timeseries'][f'{t["label"]}.timevariable_costs']
+                                y_cost = sum(y_flow_series.values * y_flow_costs.values)
                                 break
                             else:
                                 y_cost = y_flow_series.sum() * t['variable_costs']
@@ -2229,7 +2229,8 @@ def processing_variable_flows(variable, flow, results_main, results_meta, flow_o
     
                         elif f'{t_name}_{str(cy)[-2:]}' == t['label']:
                             if t['timevariable_costs']:
-                                y_cost = sum(y_flow_series * scenario['timeseries'][f'{t["label"]}.timevariable_costs'])
+                                y_flow_costs = scenario['timeseries'][f'{t["label"]}.timevariable_costs']
+                                y_cost = sum(y_flow_series.values * y_flow_costs.values)
                                 break
                             else:
                                 y_cost = y_flow_series.sum() * t['variable_costs']
@@ -2249,7 +2250,7 @@ def processing_variable_flows(variable, flow, results_main, results_meta, flow_o
                             pre_syllable = 'shortage'
                     
                         scen_bus = scenario['buses']
-                        for i, t in scen_bus.iterrows():
+                        for _, t in scen_bus.iterrows():
                             t_name = str(flow[0])
                             if t_name == t['label']:
                                 #check, if bus parameters are based on flexible timeseries (i.e. iterables)
@@ -2259,7 +2260,8 @@ def processing_variable_flows(variable, flow, results_main, results_meta, flow_o
                                         y_cost = y_flow_series.sum() * t[f'c_avar_{str(cy)[-2:]}']
                                         LCA_ser = pd.Series(data=y_flow_series.sum() * t[f'{pre_syllable}_env'], name=f'{flow[0]}/{flow[1]}_{cy}')
                                     elif t[f'{pre_syllable}_costs'] == "c_var":
-                                        y_cost = sum(y_flow_series * scenario['timeseries'][f'{t["label"]}_{str(cy)[-2:]}.timevariable_costs'])
+                                        y_flow_costs = scenario['timeseries'][f'{t["label"]}_{str(cy)[-2:]}.timevariable_costs']
+                                        y_cost = sum(y_flow_series.values * y_flow_costs.values)
                                         LCA_ser = pd.Series(data=y_flow_series.sum() * t[f'{pre_syllable}_env'], name=f'{flow[0]}/{flow[1]}_{cy}')
                                     break
                                 #if not
@@ -2338,7 +2340,8 @@ def processing_variable_flows(variable, flow, results_main, results_meta, flow_o
                                 else:
                                     if str(flow[1]) == t['to1']:
                                         if t['var_to1_costs'] == "timevariable_costs":
-                                            y_cost = sum(y_flow_series * scenario['timeseries'][f'{t["label"]}.timevariable_costs'])
+                                            y_flow_costs = scenario['timeseries'][f'{t["label"]}.timevariable_costs']
+                                            y_cost = sum(y_flow_series.values * y_flow_costs.values)
                                         else:
                                             y_cost = y_flow_series.sum() * t['var_to1_costs']
                                         LCA_ser = pd.Series(data=y_flow_series.sum() * t['var_env1'], name=f'{flow[0]}/{flow[1]}_{cy}')
