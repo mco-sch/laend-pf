@@ -1982,10 +1982,10 @@ def processResults(results_main, results_meta, calc_years, scenario):
         
     Returns
     -------
-    combined: DataFrame containing investment results and variable results including LCA impacts
-    investments: DataFrame containing all investment results including LCA impacts
-    variable: DataFrame containing all variable results including LCA impacts, aggregeted to one year
-    flow_overview: DataFrame containting all flows for all periods
+    combined : DataFrame containing investment results and variable results including LCA impacts
+    investments : DataFrame containing all investment results including LCA impacts
+    variable : DataFrame containing all variable results including LCA impacts, aggregeted to one year
+    flow_overview : DataFrame containting all flows for all periods
     '''
     
     ####general processing
@@ -2137,7 +2137,7 @@ def processResults(results_main, results_meta, calc_years, scenario):
     try:
         #reorder columns so that capacity/flow information and respective cost information is at the left hand side and LCA data afterwards
         desired_column_order = ['unit', 'year', 'type', 'invest_capacity', 'total_capacity', 'invest_cost', 'invest_cost+wacc', 'lifetime',
-                                'annualized_invest', 'om_p.a.', 'flow_p.a.', 'variable_costs_p.a.', 'ann_total_cost_p.a.', 'objective']
+                                'annualized_invest', 'om_p.a.', 'flow_p.a.', 'n_startups_p.a.', 'variable_costs_p.a.', 'ann_total_cost_p.a.', 'objective']
         LCA_columns = [col for col in combined.columns if col not in desired_column_order]
         desired_column_order += sorted(LCA_columns)
         combined = combined[desired_column_order]
@@ -2184,17 +2184,26 @@ def processing_variable_flows(variable, flow, results_main, results_meta, flow_o
     '''
     Parameters
     ----------
-    variable: dict, filled here and concatenated into a DataFrame by the caller; was empty pd.DataFrame - will be filled within this function with the wanted data/information
-    flow: dictionary containing the flows of oemof main_results
-    results_main: dict containing the results for all nodes and flows
-    results_meta: dict containing objective and information about the problem and solver
-    flow_overview: dict accumulating flow series (concatenated into a DataFrame by the caller)
-    calc_years: list of representative years (=periods) that are optimized
-    scenario: scenario dictionary containing all relevant techno-ecological and -economic information.
+    variable: dict,
+        filled here and concatenated into a DataFrame by the caller; 
+        was empty pd.DataFrame - will be filled within this function with the wanted data/information
+    flow: dict,
+        containing the flows of oemof main_results
+    results_main: dict, 
+        containing the results for all nodes and flows
+    results_meta: dict, 
+        containing objective and information about the problem and solver
+    flow_overview: dict,
+        accumulating flow series (concatenated into a DataFrame by the caller)
+    calc_years: list, 
+        representative years (=periods) that are optimized
+    scenario: dict,
+        scenario dictionary containing all relevant techno-ecological and -economic information.
 
     Returns
     -------
-    variable: filled pd.DataFrame, containing information about all variable flows
+    variable: pd.DataFrame,
+        filled pd.DataFrame, containing information about all variable flows
     
     '''
 
@@ -2211,38 +2220,43 @@ def processing_variable_flows(variable, flow, results_main, results_meta, flow_o
             #generate an overview of all flows per year and their respective impacts (financial and ecological)
             for cy in calc_years:
                 y_flow_series = pd.Series(data=df[df.index.year == cy]['flow'], name=cy)
+
+                #count startups of this flow within this period
+                if 'startup' in df.columns:
+                    n_startups = int(round(df[df.index.year == cy]['startup'].sum()))
+                else:
+                    n_startups = 0
                 
                 ####----commodity flows
                 if str(flow[0])[:8] == 'resource':
                     scen_comm = scenario['commodity_sources']
                     for _, t in scen_comm.iterrows():
                         t_name = str(flow[0])
-                        if t_name == t['label']:
+                        if t_name == t['label'] or f'{t_name}_{str(cy)[-2:]}' == t['label']:
                             if t['timevariable_costs']:
                                 y_flow_costs = scenario['timeseries'][f'{t["label"]}.timevariable_costs']
                                 y_cost = sum(y_flow_series.values[:len(y_flow_costs)] * y_flow_costs.values)
                                 break
                             else:
                                 y_cost = y_flow_series.sum() * t['variable_costs']
-                                finished = True
                                 break
-    
-                        elif f'{t_name}_{str(cy)[-2:]}' == t['label']:
-                            if t['timevariable_costs']:
-                                y_flow_costs = scenario['timeseries'][f'{t["label"]}.timevariable_costs']
-                                y_cost = sum(y_flow_series.values[:len(y_flow_costs)] * y_flow_costs.values)
-                                break
-                            else:
-                                y_cost = y_flow_series.sum() * t['variable_costs']
-                                finished = True
-                                break
+
+                    y_cost += n_startups * t['startup_costs']
                         
-                    variable_series = pd.Series(data={'unit': t['unit'], 'year': cy, 'type': 'variable', 'flow_p.a.': y_flow_series.sum(), 'variable_costs_p.a.': y_cost, 'objective': results_meta['objective']}, name=f'{flow[0]}/{flow[1]}_{cy}')
-                    LCA_ser = pd.Series(data=y_flow_series.sum() * t['var_env1'], name=f'{flow[0]}/{flow[1]}_{cy}')
+                    variable_series = pd.Series(data={'unit': t['unit'], 
+                                                      'year': cy, 
+                                                      'type': 'variable', 
+                                                      'flow_p.a.': y_flow_series.sum(),
+                                                      'n_startups_p.a.': n_startups,
+                                                      'variable_costs_p.a.': y_cost, 
+                                                      'objective': results_meta['objective']}, 
+                                                name=f'{flow[0]}/{flow[1]}_{cy}')
+                    LCA_ser = pd.Series(data=y_flow_series.sum() * t['var_env1'], 
+                                        name=f'{flow[0]}/{flow[1]}_{cy}')
                     variable_series = pd.concat([variable_series, LCA_ser])
-                
+
+                ####----excess or shortage flows
                 elif str(flow[0])[:3] == 'bus':
-                    ####----excess or shortage flows
                     if str(flow[1]).split('_')[-1:][0] == 'excess' or str(flow[1]).split('_')[-1:][0] == 'shortage':
                         if str(flow[1]).split('_')[-1:][0] == 'excess':
                             pre_syllable = 'excess'
@@ -2258,19 +2272,29 @@ def processing_variable_flows(variable, flow, results_main, results_meta, flow_o
                                 if isinstance(t[f'{pre_syllable}_costs'], str):
                                     if t[f'{pre_syllable}_costs'] == "c_avar":
                                         y_cost = y_flow_series.sum() * t[f'c_avar_{str(cy)[-2:]}']
-                                        LCA_ser = pd.Series(data=y_flow_series.sum() * t[f'{pre_syllable}_env'], name=f'{flow[0]}/{flow[1]}_{cy}')
+                                        LCA_ser = pd.Series(data=y_flow_series.sum() * t[f'{pre_syllable}_env'], 
+                                                            name=f'{flow[0]}/{flow[1]}_{cy}')
                                     elif t[f'{pre_syllable}_costs'] == "c_var":
                                         y_flow_costs = scenario['timeseries'][f'{t["label"]}_{str(cy)[-2:]}.timevariable_costs']
                                         y_cost = sum(y_flow_series.values[:len(y_flow_costs)] * y_flow_costs.values)
-                                        LCA_ser = pd.Series(data=y_flow_series.sum() * t[f'{pre_syllable}_env'], name=f'{flow[0]}/{flow[1]}_{cy}')
+                                        LCA_ser = pd.Series(data=y_flow_series.sum() * t[f'{pre_syllable}_env'], 
+                                                            name=f'{flow[0]}/{flow[1]}_{cy}')
                                     break
                                 #if not
                                 else:
                                     y_cost = y_flow_series.sum() * t[f'{pre_syllable}_costs']
-                                    LCA_ser = pd.Series(data=y_flow_series.sum() * t[f'{pre_syllable}_env'], name=f'{flow[0]}/{flow[1]}_{cy}')
+                                    LCA_ser = pd.Series(data=y_flow_series.sum() * t[f'{pre_syllable}_env'], 
+                                                        name=f'{flow[0]}/{flow[1]}_{cy}')
                                     break
                     
-                        variable_series = pd.Series(data={'unit': t['unit'], 'year': cy, 'type': 'variable', 'flow_p.a.': y_flow_series.sum(), 'variable_costs_p.a.': y_cost, 'objective': results_meta['objective']}, name=f'{flow[0]}/{flow[1]}_{cy}')
+                        variable_series = pd.Series(data={'unit': t['unit'], 
+                                                          'year': cy, 
+                                                          'type': 'variable', 
+                                                          'flow_p.a.': y_flow_series.sum(), 
+                                                          'n_startups_p.a.': n_startups,
+                                                          'variable_costs_p.a.': y_cost, 
+                                                          'objective': results_meta['objective']}, 
+                                                    name=f'{flow[0]}/{flow[1]}_{cy}')
                         variable_series = pd.concat([variable_series, LCA_ser])
     
                     ####----variable demand flows
@@ -2294,7 +2318,7 @@ def processing_variable_flows(variable, flow, results_main, results_meta, flow_o
                         finished = False
                         scen_data_list = ['storages', 'converters_in', 'converters_out']
                         for scen_data in scen_data_list:
-                            for i, t in scenario[scen_data].iterrows():
+                            for _, t in scenario[scen_data].iterrows():
                                 t_name = str(flow[1])
                                 if t_name == t['label'] or f'{t_name}_{str(cy)[-2:]}' == t['label']:
                                     if scen_data == 'storages':
@@ -2315,7 +2339,14 @@ def processing_variable_flows(variable, flow, results_main, results_meta, flow_o
                                 break
     
                         unit = next((x['unit'] for _, x in scenario['buses'].iterrows() if x['label'] == str(flow[0])), None)
-                        variable_series = pd.Series(data={'unit': unit, 'year': cy, 'type': 'variable', 'flow_p.a.': y_flow_series.sum(), 'variable_costs_p.a.': y_cost, 'objective': results_meta['objective']}, name=f'{flow[0]}/{flow[1]}_{cy}')
+                        variable_series = pd.Series(data={'unit': unit, 
+                                                          'year': cy, 
+                                                          'type': 'variable', 
+                                                          'flow_p.a.': y_flow_series.sum(),
+                                                          'n_startups_p.a.': n_startups,
+                                                          'variable_costs_p.a.': y_cost, 
+                                                          'objective': results_meta['objective']}, 
+                                                    name=f'{flow[0]}/{flow[1]}_{cy}')
                         LCA_ser = pd.Series(data=0, 
                                             index=config_laend.system_impacts_index[1:-3], 
                                             name=f'{flow[0]}/{flow[1]}_{cy}')
@@ -2331,7 +2362,8 @@ def processing_variable_flows(variable, flow, results_main, results_meta, flow_o
                             if t_name == t['label'] or f'{t_name}_{str(cy)[-2:]}' == t['label']:
                                 if scen_data == 'renewables':
                                     y_cost = y_flow_series.sum() * t['variable_costs']
-                                    LCA_ser = pd.Series(data=y_flow_series.sum() * t['var_env1'], name=f'{flow[0]}/{flow[1]}_{cy}')
+                                    LCA_ser = pd.Series(data=y_flow_series.sum() * t['var_env1'], 
+                                                        name=f'{flow[0]}/{flow[1]}_{cy}')
                                     finished = True
                                 elif scen_data == 'storages':
                                     y_cost = y_flow_series.sum() * t['variable_output_costs']            
@@ -2344,11 +2376,13 @@ def processing_variable_flows(variable, flow, results_main, results_meta, flow_o
                                             y_cost = sum(y_flow_series.values[:len(y_flow_costs)] * y_flow_costs.values)
                                         else:
                                             y_cost = y_flow_series.sum() * t['var_to1_costs']
-                                        LCA_ser = pd.Series(data=y_flow_series.sum() * t['var_env1'], name=f'{flow[0]}/{flow[1]}_{cy}')
+                                        LCA_ser = pd.Series(data=y_flow_series.sum() * t['var_env1'], 
+                                                            name=f'{flow[0]}/{flow[1]}_{cy}')
                                         finished = True
                                     elif str(flow[1]) == t['to2']:
                                         y_cost = 0
-                                        LCA_ser = pd.Series(data=y_flow_series.sum() * t['var_env2'], name=f'{flow[0]}/{flow[1]}_{cy}')
+                                        LCA_ser = pd.Series(data=y_flow_series.sum() * t['var_env2'], 
+                                                            name=f'{flow[0]}/{flow[1]}_{cy}')
                                         finished = True
                                     else:
                                         KeyError(f'Can not find data of {flow[0]}/{t_name} flow in scenario-file for processing of results')
@@ -2362,6 +2396,7 @@ def processing_variable_flows(variable, flow, results_main, results_meta, flow_o
                                                       'year': cy, 
                                                       'type': 'variable', 
                                                       'flow_p.a.': y_flow_series.sum(), 
+                                                      'n_startups_p.a.': n_startups,
                                                       'variable_costs_p.a.': y_cost, 
                                                       'objective': results_meta['objective']}, 
                                                 name=f'{flow[0]}/{flow[1]}_{cy}')
@@ -2388,10 +2423,11 @@ def extract_bus_marginal_prices(om, timeindex, bus_label, period_scaling=None):
         Label of the electricity bus.
     period_scaling : int | None
         Optional integer divisor (e.g. config_pf.aux_year_steps) to undo the
-        aux-year cost scaling done in utils to face different period durations
-        between intermediate periods and the last period (named "oemof v0.5.2
-        bug workaround"). It is applied only to timesteps that do NOT belong to
-        the last modeling period. None = no rescaling.
+        aux-year cost scaling done to face different period durations
+        between intermediate periods and the last period (also called "oemof
+        v0.5.2 bug workaround" within code comments). It is applied only to 
+        timesteps that do NOT belong to the last modeling period.
+        None = no rescaling.
 
     Returns
     -------

@@ -278,9 +278,9 @@ def optimizeForObjective(i, scenario, timeindex, periods, calc_years, run_name, 
         logging.critical(f'Optimization for {i} was infeasible — stopping.')
         raise SystemExit(1)
 
-    # fix integer variables to obtain valid duals (only relevant for mixed-integer problems)
-    # Dual values / shadow prices are only valid for linear problems. If the problem is mixed-integer,
-    # the dual values are not valid. Therefore, we fix the integer variables and resolve the problem
+    # fix integer variables and resolve model to obtain valid duals (only relevant for mixed-integer problems)
+    # Dual values (shadow prices) are only valid for linear problems. If the problem is mixed-integer,
+    # there are no dual values. Therefore, the integer variables are fixed and the problem resolved
     # to obtain valid duals.
     n_fixed = 0
     for var in om.component_data_objects(pyo.Var, active=True):
