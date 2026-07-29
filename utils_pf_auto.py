@@ -2241,7 +2241,8 @@ def processing_variable_flows(variable, flow, results_main, results_meta, flow_o
                                 y_cost = y_flow_series.sum() * t['variable_costs']
                                 break
 
-                    y_cost += n_startups * t['startup_costs']
+                    if pd.notna(t['startup_costs']):
+                        y_cost += n_startups * t['startup_costs']
                         
                     variable_series = pd.Series(data={'unit': t['unit'], 
                                                       'year': cy, 
