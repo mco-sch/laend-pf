@@ -1388,10 +1388,19 @@ def createOemofNodes(scenario_obj, calc_years):
             stor_varincosts_list = []
             stor_varoutcosts_list = []
             stor_varincosts_list.extend([(cy['variable_input_costs']) * config_laend.aux_year_steps] * tstp * (len(calc_years)-1))
-            stor_varoutcosts_list.extend([(cy['variable_output_costs']) * config_laend.aux_year_steps] * tstp * (len(calc_years)-1))
             stor_varincosts_list.extend([cy['variable_input_costs']] * tstp)
-            stor_varoutcosts_list.extend([cy['variable_output_costs']] * tstp)
-                           
+            #write variable_output_costs:
+            if cy['variable_output_costs'] == 'timevariable_costs':
+                #go to timeseries and write these costs
+                for col in scenario_obj['timeseries'].columns.values:
+                    if col == f'{cy["label"]}.timevariable_costs':
+                        for calc_year in calc_years[:-1]:
+                            stor_varoutcosts_list.extend(scenario_obj['timeseries'][col] * config_laend.aux_year_steps)
+                        stor_varoutcosts_list.extend(scenario_obj['timeseries'][col]) 
+            else:
+                stor_varoutcosts_list.extend([(cy['variable_output_costs']) * config_laend.aux_year_steps] * tstp * (len(calc_years)-1))
+                stor_varoutcosts_list.extend([cy['variable_output_costs']] * tstp)
+
             #generate oemof object for storage investment, valid for all periods
             to = cy['bus']
             storage = solph.components.GenericStorage(
@@ -1443,10 +1452,22 @@ def createOemofNodes(scenario_obj, calc_years):
                 #due to oemof v0.5.2 bug, workaround (multiplying variable_costs by period duration except last period) necessary
                 if not y == cy_list_adapted[-1]:
                     stor_varincosts_list.extend([(storages_dict[stor][y]['variable_input_costs']) * config_laend.aux_year_steps] * tstp)
-                    stor_varoutcosts_list.extend([(storages_dict[stor][y]['variable_output_costs']) * config_laend.aux_year_steps] * tstp)
-                elif y == cy_list_adapted[-1]:                
+                elif y == cy_list_adapted[-1]:
                     stor_varincosts_list.extend([storages_dict[stor][y]['variable_input_costs']] * tstp)
-                    stor_varoutcosts_list.extend([storages_dict[stor][y]['variable_output_costs']] * tstp)
+                #write variable_output_costs:
+                if storages_dict[stor][y]['variable_output_costs'] == 'timevariable_costs':
+                    #go to timeseries and write these costs
+                    for col in scenario_obj['timeseries'].columns.values:
+                        if col == f'{storages_dict[stor][y]["label"]}.timevariable_costs':
+                            if not y == cy_list_adapted[-1]:
+                                stor_varoutcosts_list.extend(scenario_obj['timeseries'][col] * config_laend.aux_year_steps)
+                            elif y == cy_list_adapted[-1]:
+                                stor_varoutcosts_list.extend(scenario_obj['timeseries'][col])
+                else:
+                    if not y == cy_list_adapted[-1]:
+                        stor_varoutcosts_list.extend([(storages_dict[stor][y]['variable_output_costs']) * config_laend.aux_year_steps] * tstp)
+                    elif y == cy_list_adapted[-1]:
+                        stor_varoutcosts_list.extend([storages_dict[stor][y]['variable_output_costs']] * tstp)
             
             cy = storages_dict[stor][calc_year]      
             to = cy['bus']
@@ -2367,7 +2388,11 @@ def processing_variable_flows(variable, flow, results_main, results_meta, flow_o
                                                         name=f'{flow[0]}/{flow[1]}_{cy}')
                                     finished = True
                                 elif scen_data == 'storages':
-                                    y_cost = y_flow_series.sum() * t['variable_output_costs']            
+                                    if t['variable_output_costs'] == "timevariable_costs":
+                                        y_flow_costs = scenario['timeseries'][f'{t["label"]}.timevariable_costs']
+                                        y_cost = sum(y_flow_series.values[:len(y_flow_costs)] * y_flow_costs.values)
+                                    else:
+                                        y_cost = y_flow_series.sum() * t['variable_output_costs']
                                     LCA_ser = pd.Series(data=0, index=config_laend.system_impacts_index[1:-3], name=f'{flow[0]}/{flow[1]}_{cy}')
                                     finished = True
                                 else:
