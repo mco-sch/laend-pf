@@ -1295,7 +1295,7 @@ def createOemofNodes(scenario_obj, calc_years):
         #minimum capacity that has to be invested in the respective period
         rnw_minimum_list = []
         for y in cy_list_adapted:
-            rnw_min = renewables_dict[rnw][y].get('min', 0)
+            rnw_min = renewables_dict[rnw][y].get('min_capacity_invest', 0)
             rnw_minimum_list.append(0 if pd.isna(rnw_min) else rnw_min)
         
         #due to oemof v0.5.2 bug, workaround (multiplying variable_costs by period duration except last period) necessary
