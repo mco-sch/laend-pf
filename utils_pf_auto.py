@@ -1291,6 +1291,12 @@ def createOemofNodes(scenario_obj, calc_years):
         #collect individual information for each period and generate lists for multi period optimization
         rnw_maximum_list = [renewables_dict[rnw][y]['max_capacity_invest'] for y in cy_list_adapted]
         rnw_ep_cost_list = [(renewables_dict[rnw][y]['invest'] + renewables_dict[rnw][y]['inv1']) * tstp/8760 for y in cy_list_adapted]
+
+        #minimum capacity that has to be invested in the respective period
+        rnw_minimum_list = []
+        for y in cy_list_adapted:
+            rnw_min = renewables_dict[rnw][y].get('min', 0)
+            rnw_minimum_list.append(0 if pd.isna(rnw_min) else rnw_min)
         
         #due to oemof v0.5.2 bug, workaround (multiplying variable_costs by period duration except last period) necessary
         rnw_varcosts_list = []
@@ -1307,7 +1313,7 @@ def createOemofNodes(scenario_obj, calc_years):
             outputs={busd[to]: solph.flows.Flow(
                 investment=solph.Investment(
                     maximum=rnw_maximum_list,
-                    minimum=0,
+                    minimum=rnw_minimum_list,
                     overall_maximum=cy['max_total_capacity'],
                     ep_costs=rnw_ep_cost_list, #already contains financial and environmental data
                     lifetime=int(cy['lifetime']), #must be !INTEGER!, nevertheless an oemof inherent file (investment_flow_blocks.py) has a problem
