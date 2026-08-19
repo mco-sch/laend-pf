@@ -1393,6 +1393,7 @@ def createOemofNodes(scenario_obj, calc_years):
             #due to oemof v0.5.2 bug, workaround (multiplying variable_costs by period duration except last period) necessary
             stor_varincosts_list = []
             stor_varoutcosts_list = []
+            #write variable_input_costs:
             if cy['variable_input_costs'] == 'timevariable_costs':
                 #go to timeseries and write these costs
                 for col in scenario_obj['timeseries'].columns.values:
@@ -1464,11 +1465,22 @@ def createOemofNodes(scenario_obj, calc_years):
             stor_varincosts_list = []
             stor_varoutcosts_list = []
             for y in cy_list_adapted:
-                #due to oemof v0.5.2 bug, workaround (multiplying variable_costs by period duration except last period) necessary
-                if not y == cy_list_adapted[-1]:
-                    stor_varincosts_list.extend([(storages_dict[stor][y]['variable_input_costs']) * config_laend.aux_year_steps] * tstp)
-                elif y == cy_list_adapted[-1]:
-                    stor_varincosts_list.extend([storages_dict[stor][y]['variable_input_costs']] * tstp)
+                #due to oemof v0.5.2 bug, workaround (multiplying variable_costs by period duration except last period) necessary          
+                #write variable_input_costs:
+                if storages_dict[stor][y]['variable_input_costs'] == 'timevariable_costs':
+                    #go to timeseries and write these costs
+                    for col in scenario_obj['timeseries'].columns.values:
+                        if col == f'{storages_dict[stor][y]["label"]}.timevariable_costs':
+                            if not y == cy_list_adapted[-1]:
+                                stor_varincosts_list.extend(scenario_obj['timeseries'][col] * config_laend.aux_year_steps)
+                            elif y == cy_list_adapted[-1]:
+                                stor_varincosts_list.extend(scenario_obj['timeseries'][col])
+                else:
+                    if not y == cy_list_adapted[-1]:
+                        stor_varincosts_list.extend([(storages_dict[stor][y]['variable_input_costs']) * config_laend.aux_year_steps] * tstp)
+                    elif y == cy_list_adapted[-1]:
+                        stor_varincosts_list.extend([storages_dict[stor][y]['variable_input_costs']] * tstp)
+
                 #write variable_output_costs:
                 if storages_dict[stor][y]['variable_output_costs'] == 'timevariable_costs':
                     #go to timeseries and write these costs
@@ -2359,7 +2371,11 @@ def processing_variable_flows(variable, flow, results_main, results_meta, flow_o
                                 t_name = str(flow[1])
                                 if t_name == t['label'] or f'{t_name}_{str(cy)[-2:]}' == t['label']:
                                     if scen_data == 'storages':
-                                        y_cost = y_flow_series.sum() * t['variable_input_costs']
+                                        if t['variable_input_costs'] == "timevariable_costs":
+                                            y_flow_costs = scenario['timeseries'][f'{t["label"]}.timevariable_costs']
+                                            y_cost = sum(y_flow_series.values[:len(y_flow_costs)] * y_flow_costs.values)
+                                        else:
+                                            y_cost = y_flow_series.sum() * t['variable_input_costs']
                                         finished = True
                                     else:
                                         if str(flow[0]) == t['from1']:
