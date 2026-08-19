@@ -1393,8 +1393,17 @@ def createOemofNodes(scenario_obj, calc_years):
             #due to oemof v0.5.2 bug, workaround (multiplying variable_costs by period duration except last period) necessary
             stor_varincosts_list = []
             stor_varoutcosts_list = []
-            stor_varincosts_list.extend([(cy['variable_input_costs']) * config_laend.aux_year_steps] * tstp * (len(calc_years)-1))
-            stor_varincosts_list.extend([cy['variable_input_costs']] * tstp)
+            if cy['variable_input_costs'] == 'timevariable_costs':
+                #go to timeseries and write these costs
+                for col in scenario_obj['timeseries'].columns.values:
+                    if col == f'{cy["label"]}.timevariable_costs':
+                        for calc_year in calc_years[:-1]:
+                            stor_varincosts_list.extend(scenario_obj['timeseries'][col] * config_laend.aux_year_steps)
+                        stor_varincosts_list.extend(scenario_obj['timeseries'][col])
+            else:
+                stor_varincosts_list.extend([(cy['variable_input_costs']) * config_laend.aux_year_steps] * tstp * (len(calc_years)-1))
+                stor_varincosts_list.extend([cy['variable_input_costs']] * tstp)
+
             #write variable_output_costs:
             if cy['variable_output_costs'] == 'timevariable_costs':
                 #go to timeseries and write these costs
