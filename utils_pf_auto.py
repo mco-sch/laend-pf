@@ -260,12 +260,12 @@ def validateExcelInput(scenario):
     logging.info('All buses used as input or output have also been listed as a bus. Validation continues...') 
 
     # check that demand buses have excess
-    demands = list(scenario['demand']['from'])
-    bus_with_excess = list(scenario['buses'].loc[scenario['buses']['excess'] == 1]['label'])
-    if not set(demands).issubset(bus_with_excess):
-        raise ValueError(
-            f'Please make sure that the buses listed as input for demands {demands} have excess capacity enabled in the buses excel sheet.')
-    logging.info('Checked that demand inputs have excess capability enabled. Validation continues...')
+#    demands = list(scenario['demand']['from'])
+#    bus_with_excess = list(scenario['buses'].loc[scenario['buses']['excess'] == 1]['label'])
+#    if not set(demands).issubset(bus_with_excess):
+#        raise ValueError(
+#            f'Please make sure that the buses listed as input for demands {demands} have excess capacity enabled in the buses excel sheet.')
+#    logging.info('Checked that demand inputs have excess capability enabled. Validation continues...')
 
     # check that fixed flows exist for renewables and demand
     sheets = ['demand', 'renewables']
@@ -1146,7 +1146,7 @@ def createOemofNodes(scenario_obj, calc_years):
 
 
     ####Create Sinks
-    for i, x in scenario_obj['demand'].iterrows():
+    for _, x in scenario_obj['demand'].iterrows():
         #check, if demands are different for the respective years.
         #if no, write defined demand for all periods
         timeseries_list = []
@@ -1922,10 +1922,13 @@ def createOemofNodes(scenario_obj, calc_years):
                             if y != cy_list_adapted[-1]:
                                 convout_varto1costs_list.extend((scenario_obj['timeseries'][col] + converters_out_dict[convout][y]['var_env1']) * 
                                                                 config_laend.aux_year_steps) #multiply variable_costs by period duration except last period
+                            elif y == cy_list_adapted[-1]:
                                 convout_varto1costs_list.extend(scenario_obj['timeseries'][col] + converters_out_dict[convout][y]['var_env1']) #add variable_costs for last period
                 else:
-                    convout_varto1costs_list.extend([(converters_out_dict[convout][y]['var_to1_costs'] + converters_out_dict[convout][y]['var_env1']) * config_laend.aux_year_steps] * tstp)
-                    convout_varto1costs_list.extend([converters_out_dict[convout][y]['var_to1_costs'] + converters_out_dict[convout][y]['var_env1']] * tstp)
+                    if y != cy_list_adapted[-1]:
+                        convout_varto1costs_list.extend([(converters_out_dict[convout][y]['var_to1_costs'] + converters_out_dict[convout][y]['var_env1']) * config_laend.aux_year_steps] * tstp)
+                    elif y == cy_list_adapted[-1]:
+                        convout_varto1costs_list.extend([converters_out_dict[convout][y]['var_to1_costs'] + converters_out_dict[convout][y]['var_env1']] * tstp)
 
             
             #generate oemof object for converter_out investment, valid for all individual periods
