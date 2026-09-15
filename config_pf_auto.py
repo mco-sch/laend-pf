@@ -14,8 +14,8 @@ showTable = False
 #######################################
 
 # Start and end year of optimization
-start_year = 2025
-end_year = 2025
+start_year = 2024
+end_year = 2024
 
 calc_start = datetime(start_year, 1, 1, 00, 00)
 calc_end = datetime(end_year, 12, 31, 23, 00)
