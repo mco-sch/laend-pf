@@ -229,7 +229,7 @@ def optimizeForObjective(i, scenario, timeindex, periods, calc_years, run_name, 
             )
 
     #create oemof objects
-    new_nodes = utils.createOemofNodes(scenario_obj, calc_years)
+    new_nodes, constr = utils.createOemofNodes(scenario_obj, calc_years)
 
     # add new nodes and flows to energy system
     logging.info('Adding nodes to the energy system')
@@ -241,9 +241,14 @@ def optimizeForObjective(i, scenario, timeindex, periods, calc_years, run_name, 
     # disable garbage collection to speed up model creation (relevant for large models)
     gc.disable()
     om = Model(es, discount_rate=config_pf.DiscountRate)
+    if constr is not None:
+        for cstr, limit in constr.items():
+            om = solph.constraints.additional_investment_flow_limit(
+                om, cstr, limit=limit
+            )
 
     #ask the solver to return dual values (e.g. shadow prices) of the constraints.
-    logging.info('Create dual values for constraints')
+    logging.info('Create obtainable dual values for constraints')
     om.dual = pyo.Suffix(direction=pyo.Suffix.IMPORT)
 
     # set emission constraint (if config_pf.emission_constraint = False, all emissions & emission_constraint = 0)

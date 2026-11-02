@@ -75,12 +75,6 @@ def defineYearsForCalculation():
         #t_idx = pd.date_range(f'1/1/{i}',f'12/31/{i}/23' , freq='H')
         t_idx = pd.date_range(start=f'1/1/{i}', periods=tstp, freq='h')
         
-        #as the timeindex is set by periods variable, leap day search is deprecated
-        # check, if is leap year and if so, delete leap day
-        #if t_idx.is_leap_year.all():
-        #    t_idx = t_idx[~((t_idx.month==2) & (t_idx.day==29))]
-        #---------
-        
         t_idx_series = pd.Series(index=t_idx, dtype="float64")
         
         periods.append(t_idx)
@@ -943,6 +937,7 @@ def createOemofNodes(scenario_obj, calc_years):
     Returns
     -------
     nodes: list of created nodes that will be added to energysystem model (es)
+    constr: optional constraint object; ``no_constraint`` when no constraint is defined
     '''
 
     logging.info('Creating oemof objects')
@@ -955,7 +950,9 @@ def createOemofNodes(scenario_obj, calc_years):
     else:
         tstp = 8760
     
-    nodes = []    
+    nodes = []
+    constr = {}
+
     busd = {}
     cy_list_adapted = []
     for calc_year in calc_years:
@@ -963,7 +960,7 @@ def createOemofNodes(scenario_obj, calc_years):
 
 
     ####Create buses    
-    for i, x in scenario_obj['buses'].iterrows():
+    for _, x in scenario_obj['buses'].iterrows():
         bus = solph.buses.Bus(label=x['label'])
         nodes.append(bus)
         
@@ -1248,7 +1245,7 @@ def createOemofNodes(scenario_obj, calc_years):
     ####Create Renewables
     #collect and cluster all renewables
     renewables_dict = {}
-    for i, x in scenario_obj['renewables'].iterrows():
+    for _, x in scenario_obj['renewables'].iterrows():
         if x['initially_installed_capacity'] > 0:
             x_label = x['label'][:-9]
             if x_label not in renewables_dict:
@@ -1259,7 +1256,7 @@ def createOemofNodes(scenario_obj, calc_years):
             if x_label not in renewables_dict:
                 renewables_dict[x_label] = {}
             renewables_dict[x_label][f'{x["label"][-2:]}'] = x #writes each year separately to renewables_dict[rnw]
-    
+
     #go through clustered renewables and write timeseries for multi period optimization
     for rnw in renewables_dict.keys():
         #check, if for all periods (=calculation years) respective information is available
@@ -1297,7 +1294,14 @@ def createOemofNodes(scenario_obj, calc_years):
         for y in cy_list_adapted:
             rnw_min = renewables_dict[rnw][y].get('min_capacity_invest', 0)
             rnw_minimum_list.append(0 if pd.isna(rnw_min) else rnw_min)
-        
+
+        #check if there is a constraint defined and if yes, add to the oemof object
+        constr_name = "no_constraint"
+        if isinstance(renewables_dict[rnw][cy_list_adapted[0]]['common_constraint'], str) \
+        and renewables_dict[rnw][cy_list_adapted[0]]['common_constraint'].strip():
+            constr_name = renewables_dict[rnw][cy_list_adapted[0]]['common_constraint']
+            constr[constr_name] = renewables_dict[rnw][cy_list_adapted[0]]['constraint_value']
+
         #due to oemof v0.5.2 bug, workaround (multiplying variable_costs by period duration except last period) necessary
         rnw_varcosts_list = []
         for y in cy_list_adapted:
@@ -1318,7 +1322,8 @@ def createOemofNodes(scenario_obj, calc_years):
                     ep_costs=rnw_ep_cost_list, #already contains financial and environmental data
                     lifetime=int(cy['lifetime']), #must be !INTEGER!, nevertheless an oemof inherent file (investment_flow_blocks.py) has a problem
                     interest_rate=0, #interest rate was already considered in adaptForObjective computation. Considering here would lead to problems if env impacts are included in ep_costs
-                    fixed_costs=cy['om'] * tstp/8760),
+                    fixed_costs=cy['om'] * tstp/8760,
+                    custom_attributes={constr_name: 1}),
                 variable_costs=rnw_varcosts_list,
                 fix=timeseries_list)})
         nodes.append(renewable)
@@ -1344,7 +1349,8 @@ def createOemofNodes(scenario_obj, calc_years):
                         lifetime=int(renewables_dict[rnw]['existing']['lifetime']), #must be !INTEGER!, nevertheless an oemof inherent file (investment_flow_blocks.py) has a problem
                         age=0,
                         interest_rate=0,
-                        fixed_costs=renewables_dict[rnw]['existing']['om'] * tstp/8760),
+                        fixed_costs=renewables_dict[rnw]['existing']['om'] * tstp/8760,
+                        custom_attributes={constr_name: 1}),
                     variable_costs=rnw_varcosts_list,
                     fix=timeseries_list)})
             nodes.append(renewable_e)
@@ -2015,7 +2021,7 @@ def createOemofNodes(scenario_obj, calc_years):
             logging.debug(f'{convout}_existing (Converter_out) created.')
 
 
-    return nodes
+    return nodes, constr
 
 
 
@@ -2413,7 +2419,7 @@ def processing_variable_flows(variable, flow, results_main, results_meta, flow_o
                     finished = False
                     scen_data_list = ['renewables', 'storages', 'converters_in', 'converters_out']
                     for scen_data in scen_data_list:
-                        for i, t in scenario[scen_data].iterrows():
+                        for _, t in scenario[scen_data].iterrows():
                             t_name = str(flow[0])
                             if t_name == t['label'] or f'{t_name}_{str(cy)[-2:]}' == t['label']:
                                 if scen_data == 'renewables':
@@ -2446,6 +2452,8 @@ def processing_variable_flows(variable, flow, results_main, results_meta, flow_o
                                         finished = True
                                     else:
                                         KeyError(f'Can not find data of {flow[0]}/{t_name} flow in scenario-file for processing of results')
+                            else:
+                                KeyError(f'Can not find data of {flow[0]}/flow[1] flow in scenario-file for processing of results')                            
                             if finished == True:
                                 break
                         if finished == True:
