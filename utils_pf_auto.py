@@ -1829,11 +1829,12 @@ def createOemofNodes(scenario_obj, calc_years):
             convout_varfrom1costs_list = []
             convout_varfrom2costs_list = []
             convout_varto1costs_list = []
+            convout_varto1max_list = []
             #write var_from1_costs:
             convout_varfrom1costs_list.extend([cy['var_from1_costs'] * config_laend.aux_year_steps] * tstp * (len(calc_years)-1)) #multiply variable_costs by period duration except last period
             convout_varfrom1costs_list.extend([cy['var_from1_costs']] * tstp) #add variable_costs for last period
             
-            #write var_to1_costs:
+            #write var_to1_costs and try var_to1_max:
             if cy['var_to1_costs'] == 'timevariable_costs':
                 #go to timeseries and write these costs
                 for col in scenario_obj['timeseries'].columns.values:
@@ -1856,6 +1857,16 @@ def createOemofNodes(scenario_obj, calc_years):
                 convout_varto1costs_list.extend([(cy['var_to1_costs'] + cy['var_env1']) * config_laend.aux_year_steps] * tstp * (len(calc_years)-1)) #multiply variable_costs by period duration except last period
                 convout_varto1costs_list.extend([cy['var_to1_costs'] + cy['var_env1']] * tstp) #add variable_costs for last period
             
+            if cy['var_to1_max'] != 'unbound':
+                if cy['var_to1_max'] == 'timevariable_max':
+                    col = f'{cy["label"]}.timevariable_max'
+                    if col in scenario_obj['timeseries'].columns.values:
+                        convout_varto1max_list.extend(scenario_obj['timeseries'][col] * len(calc_years))
+                    else:
+                        raise ValueError(f'\n\n\n!!!!!!!!!!\nTimevariable maximum for {convout} is missing in timeseries.\n!!!!!!!!!!\n\n\n')
+                else:
+                    convout_varto1max_list.extend([cy['var_to1_max']] * tstp * len(calc_years))
+
             #check, if there are var_from2_costs:
             try:
                 convout_varfrom2costs_list.extend([cy['var_from2_costs'] * config_laend.aux_year_steps] * tstp * (len(calc_years)-1))
@@ -1889,7 +1900,10 @@ def createOemofNodes(scenario_obj, calc_years):
                 conversion_facts[busd[from2]] = cy['conversion_factor_f2']
             except:
                 proxy = 'nothing will happen, variable is only needed for "except" task'
-                 
+
+            if convout_varto1max_list != []:
+                output_args[busd[to1]].max = convout_varto1max_list
+
             nodes.append(solph.components.Converter(
                 label=convout,
                 inputs=input_args,
@@ -1906,6 +1920,7 @@ def createOemofNodes(scenario_obj, calc_years):
             convout_varfrom1costs_list = []
             convout_varfrom2costs_list = []
             convout_varto1costs_list = []
+            convout_varto1max_list = []
             #write var_from1_costs and try var_from2_costs:
             for y in cy_list_adapted:
                 if y != cy_list_adapted[-1]:
@@ -1920,7 +1935,7 @@ def createOemofNodes(scenario_obj, calc_years):
                 except:
                     proxy = 'nothing will happen, variable is only needed for "except" task'
                     
-            #write var_to1_costs:
+            #write var_to1_costs and try var_to1_max:
             for y in cy_list_adapted:
                 if converters_out_dict[convout][y]['var_to1_costs'] == 'timevariable_costs':
                     for col in scenario_obj['timeseries'].columns.values:
@@ -1936,6 +1951,15 @@ def createOemofNodes(scenario_obj, calc_years):
                     elif y == cy_list_adapted[-1]:
                         convout_varto1costs_list.extend([converters_out_dict[convout][y]['var_to1_costs'] + converters_out_dict[convout][y]['var_env1']] * tstp)
 
+                if converters_out_dict[convout][y]['var_to1_max'] != 'unbound':
+                    if converters_out_dict[convout][y]['var_to1_max'] == 'timevariable_max':
+                        col = f'{converters_out_dict[convout][y]["label"]}.timevariable_max'
+                        if col in scenario_obj['timeseries'].columns.values:
+                            convout_varto1max_list.extend(scenario_obj['timeseries'][col])
+                        else:
+                            raise ValueError(f'\n\n\n!!!!!!!!!!\nTimevariable maximum for {convout} in period {y} is missing in timeseries.\n!!!!!!!!!!\n\n\n')
+                    else:
+                        convout_varto1max_list.extend([converters_out_dict[convout][y]['var_to1_max']] * tstp)
             
             #generate oemof object for converter_out investment, valid for all individual periods
             cy = converters_out_dict[convout][calc_year]
@@ -1962,6 +1986,9 @@ def createOemofNodes(scenario_obj, calc_years):
                 conversion_facts[busd[from2]] = cy['conversion_factor_f2']
             except:
                 proxy = 'nothing will happen, variable is only needed for "except" task'
+
+            if convout_varto1max_list != []:
+                output_args[busd[to1]].max = convout_varto1max_list
                 
             nodes.append(solph.components.Converter(
                 label=convout,
@@ -1977,6 +2004,7 @@ def createOemofNodes(scenario_obj, calc_years):
             convout_varfrom1costs_list = []
             convout_varfrom2costs_list = []
             convout_varto1costs_list = []
+            convout_varto1max_list = []
             convout_varfrom1costs_list.extend([cy['var_from1_costs'] * config_laend.aux_year_steps] * tstp * (len(calc_years)-1))
             convout_varto1costs_list.extend([(cy['var_to1_costs'] + cy['var_env1']) * config_laend.aux_year_steps] * tstp * (len(calc_years)-1))
             convout_varfrom1costs_list.extend([cy['var_from1_costs']] * tstp)
@@ -1986,6 +2014,16 @@ def createOemofNodes(scenario_obj, calc_years):
                 convout_varfrom2costs_list.extend([cy['var_from2_costs']] * tstp)
             except:
                 proxy = 'nothing will happen, variable is only needed for "except" task'
+
+            if cy['var_to1_max'] != 'unbound':
+                if cy['var_to1_max'] == 'timevariable_max':
+                    col = f'{cy["label"]}.timevariable_max'
+                    if col in scenario_obj['timeseries'].columns.values:
+                        convout_varto1max_list.extend(scenario_obj['timeseries'][col] * len(calc_years))
+                    else:
+                        raise ValueError(f'\n\n\n!!!!!!!!!!\nTimevariable maximum for {convout} is missing in timeseries.\n!!!!!!!!!!\n\n\n')
+                else:
+                    convout_varto1max_list.extend([cy['var_to1_max']] * tstp * len(calc_years))
             
             #generate oemof object for already existing converter_out
             from1 = cy['from1']
@@ -2012,6 +2050,9 @@ def createOemofNodes(scenario_obj, calc_years):
                 conversion_facts[busd[from2]] = cy['conversion_factor_f2']
             except:
                 proxy = 'nothing will happen, variable is only needed for "except" task'
+
+            if convout_varto1max_list != []:
+                output_args[busd[to1]].max = convout_varto1max_list
                  
             nodes.append(solph.components.Converter(
                 label=convout+'_existing',
@@ -2678,33 +2719,3 @@ def annualization(xls):
 
     
 ####End
-
-
-    
-    
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-            
