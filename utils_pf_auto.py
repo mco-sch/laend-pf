@@ -1452,6 +1452,7 @@ def createOemofNodes(scenario_obj, calc_years):
                 inflow_conversion_factor=cy["efficiency inflow"],
                 outflow_conversion_factor=cy["efficiency outflow"],
                 investment=solph.Investment(
+                    minimum=cy['min_capacity_invest'],
                     maximum=cy['max_capacity_invest'],
                     minimum=0,
                     overall_maximum=cy['max_total_capacity'],
@@ -1466,6 +1467,7 @@ def createOemofNodes(scenario_obj, calc_years):
         #if storage information are NOT valid for all periods, BUT for each individual period    
         elif not all(key == 'existing' for key in storages_dict[stor].keys()):
             #collect individual information for each period and generate lists for multi period optimization
+            stor_minimum_list = [storages_dict[stor][y]['min_capacity_invest'] for y in cy_list_adapted]
             stor_maximum_list = [storages_dict[stor][y]['max_capacity_invest'] for y in cy_list_adapted]
             stor_ep_cost_list = [(storages_dict[stor][y]['invest'] + storages_dict[stor][y]['inv1']) * tstp/8760 for y in cy_list_adapted]
             stor_varincosts_list = []
@@ -1531,6 +1533,7 @@ def createOemofNodes(scenario_obj, calc_years):
                 inflow_conversion_factor=cy["efficiency inflow"],
                 outflow_conversion_factor=cy["efficiency outflow"],
                 investment=solph.Investment(
+                    minimum=stor_minimum_list,
                     maximum=stor_maximum_list,
                     minimum=0,
                     overall_maximum=cy['max_total_capacity'],

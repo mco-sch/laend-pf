@@ -321,6 +321,7 @@ solver_options = {
     'threads': 14,
     'feasibilitytol': 1e-6, #gurobi-standard: 1e-6
     'optimalitytol': 1e-6 #gurobi-standard: 1e-6
+    'mipgap': 1e-4, #gurobi-standard for MILP: 1e-4
 } if solver_options_on == True else {}
 
 continue_despite_storage_issues = None
