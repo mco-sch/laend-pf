@@ -1454,7 +1454,6 @@ def createOemofNodes(scenario_obj, calc_years):
                 investment=solph.Investment(
                     minimum=cy['min_capacity_invest'],
                     maximum=cy['max_capacity_invest'],
-                    minimum=0,
                     overall_maximum=cy['max_total_capacity'],
                     ep_costs=(cy['invest'] + cy['inv1']) * tstp/8760,
                     lifetime=int(cy['lifetime']), #must be !INTEGER!, nevertheless an oemof inherent file (investment_flow_blocks.py) has a problem
@@ -1535,7 +1534,6 @@ def createOemofNodes(scenario_obj, calc_years):
                 investment=solph.Investment(
                     minimum=stor_minimum_list,
                     maximum=stor_maximum_list,
-                    minimum=0,
                     overall_maximum=cy['max_total_capacity'],
                     ep_costs=stor_ep_cost_list,
                     lifetime=int(cy['lifetime']), #must be !INTEGER!, nevertheless an oemof inherent file (investment_flow_blocks.py) has a problem
